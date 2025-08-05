@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "lv_font_montserrat_28_pl.h"
 
+void update_set_temp_label(void);
+
 lv_obj_t *ui_main_screen;
 lv_obj_t *label_set_temp;
 lv_obj_t *btn_plus;
@@ -43,32 +45,30 @@ static void btn_event_cb(lv_event_t *e) {
     update_labels();
 }
 
+static void slider_event_cb(lv_event_t *e) {
+    lv_obj_t *arc = lv_event_get_target(e);
+    int value = lv_arc_get_value(arc);
+    set_temperature = value / 10.0f;
+}
+
 void update_set_temp_label() {
     static char buf[32];
     snprintf(buf, sizeof(buf), "Zadana: %.1f°C", set_temperature);
     lv_label_set_text(label_set_temp, buf);
 }
 
-void btn_plus_event_cb(lv_event_t *e) {
-    if (set_temperature < 40.0f) {
-        set_temperature += 0.5f;
-        update_set_temp_label();
-    }
-}
 
-void btn_minus_event_cb(lv_event_t *e) {
-    if (set_temperature > 10.0f) {
-        set_temperature -= 0.5f;
-        update_set_temp_label();
-    }
-}
-
-void slider_event_cb(lv_event_t *e)
+void arc_event_cb(lv_event_t *e)
 {
-    lv_obj_t *arc = lv_event_get_target(e);
-    int value = lv_arc_get_value(arc); // pobierz wartość z suwaka
-    set_temperature = value / 10.0f;
-    update_set_temp_label();
+    lv_event_code_t code = lv_event_get_code(e);  // 🟢 pobieramy typ zdarzenia
+    lv_obj_t *arc = lv_event_get_target(e);       // 🟢 obiekt, który wywołał event
+
+    if (code == LV_EVENT_VALUE_CHANGED)
+    {
+        int val = lv_arc_get_value(arc);          // 🟢 pobieramy wartość z łuku
+        set_temperature = val / 10.0f;
+        update_set_temp_label();
+    }
 }
 
 
@@ -94,25 +94,26 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
 
-    // ARC – okrągły suwak
-    lv_obj_t *arc = lv_arc_create(ui_main_screen);
-    lv_arc_set_range(arc, 100, 400); // 10.0 – 40.0°C w krokach 0.1
+    // Tworzenie łuku
+    lv_obj_t *arc = lv_arc_create(ui_main_screen); 
+    lv_obj_set_size(arc, 320, 320);
+    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 50); // wyśrodkowany poziomo, przesunięty w dół
+
+    // Zakres i wartość (x10 dla wartości połówkowych)
+    lv_arc_set_range(arc, 100, 400);
     lv_arc_set_value(arc, (int)(set_temperature * 10));
-    lv_obj_center(arc); // pośrodku ekranu
-    lv_arc_set_rotation(arc, 135); // początek w lewo-dół
-    lv_arc_set_bg_angles(arc, 0, 270); // zakres łuku
-    //lv_arc_set_type(arc, LV_ARC_TYPE_NORMAL); rozwiązanie zbyt nowe do właściewgo LVGL
-    lv_arc_set_rotation(arc, 135);
-    lv_arc_set_bg_angles(arc, 135, 45);
-    lv_obj_set_size(arc, 400, 400); // nieco mniejsze niż ekran 466x466
 
-    // Ustaw przezroczystość środkowego obszaru łuku
-    lv_obj_remove_style(arc, NULL, LV_PART_KNOB); // ukryj "gałkę" suwaka (opcjonalnie)
-    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICK_FOCUSABLE); // brak fokusu
+    // Zakres widocznego łuku (90° – ćwiartka): od 135° do 225°
+    lv_arc_set_angles(arc, 135, 225);
 
-    // Callback przy zmianie
-    lv_obj_add_event_cb(arc, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    // tło łuku
+    lv_obj_set_style_arc_color(arc, lv_color_make(80, 80, 80), LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    // gałka łuku
+    lv_obj_set_style_bg_color(arc, lv_color_white(), LV_PART_KNOB | LV_STATE_DEFAULT);
+
+    // Callback
+    lv_obj_add_event_cb(arc, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);  // ✅ DZIAŁA w LVGL v8
 
     // Etykieta zadanej temperatury do regulacji
     label_set_temp = lv_label_create(ui_main_screen);
