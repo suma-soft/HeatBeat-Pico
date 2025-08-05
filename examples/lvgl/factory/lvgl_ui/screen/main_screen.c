@@ -65,16 +65,10 @@ void btn_minus_event_cb(lv_event_t *e) {
 
 void slider_event_cb(lv_event_t *e)
 {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_VALUE_CHANGED)
-    {
-        lv_obj_t *slider = lv_event_get_target(e);
-        int val = lv_slider_get_value(slider);
-        set_temperature = val / 10.0f;
-
-        update_set_temp_label();
-        lv_event_stop_bubbling(e);
-    }
+    lv_obj_t *arc = lv_event_get_target(e);
+    int value = lv_arc_get_value(arc); // pobierz wartość z suwaka
+    set_temperature = value / 10.0f;
+    update_set_temp_label();
 }
 
 
@@ -100,27 +94,30 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
 
-    // Suwak do ustawiania temperatury
-    lv_obj_t *slider = lv_slider_create(ui_main_screen);
-    lv_slider_set_range(slider, 100, 400);  // 10.0°C – 40.0°C (x10)
-    lv_slider_set_value(slider, (int)(set_temperature * 10), LV_ANIM_OFF);
+    // ARC – okrągły suwak
+    lv_obj_t *arc = lv_arc_create(ui_main_screen);
+    lv_arc_set_range(arc, 100, 400); // 10.0 – 40.0°C w krokach 0.1
+    lv_arc_set_value(arc, (int)(set_temperature * 10));
+    lv_obj_center(arc); // pośrodku ekranu
+    lv_arc_set_rotation(arc, 135); // początek w lewo-dół
+    lv_arc_set_bg_angles(arc, 0, 270); // zakres łuku
+    //lv_arc_set_type(arc, LV_ARC_TYPE_NORMAL); rozwiązanie zbyt nowe do właściewgo LVGL
+    lv_arc_set_rotation(arc, 135);
+    lv_arc_set_bg_angles(arc, 135, 45);
+    lv_obj_set_size(arc, 400, 400); // nieco mniejsze niż ekran 466x466
 
-    // Rozmiar i pozycja dopasowana do okrągłego ekranu
-    lv_obj_set_size(slider, 320, 20); // szerokość 320px
-    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -80); // wyżej o 50px niż wcześniej
+    // Ustaw przezroczystość środkowego obszaru łuku
+    lv_obj_remove_style(arc, NULL, LV_PART_KNOB); // ukryj "gałkę" suwaka (opcjonalnie)
+    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICK_FOCUSABLE); // brak fokusu
 
-    // Styl
-    lv_obj_set_style_bg_color(slider, lv_color_make(80, 80, 80), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(slider, lv_color_make(80, 80, 80), LV_PART_MAIN);
-
-    // Callback
-    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    // Callback przy zmianie
+    lv_obj_add_event_cb(arc, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
 
     // Etykieta zadanej temperatury do regulacji
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_align(label_set_temp, LV_ALIGN_BOTTOM_MID, 0, -110); // umieszczone nad suwakiem
+    lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 0); // środek okręgu
     update_set_temp_label();
 }
 
