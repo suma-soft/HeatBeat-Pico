@@ -44,7 +44,7 @@ static void btn_event_cb(lv_event_t *e) {
 }
 
 void update_set_temp_label() {
-    static char buf[16];
+    static char buf[32];
     snprintf(buf, sizeof(buf), "Zadana: %.1f°C", set_temperature);
     lv_label_set_text(label_set_temp, buf);
 }
@@ -63,6 +63,21 @@ void btn_minus_event_cb(lv_event_t *e) {
     }
 }
 
+void slider_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_VALUE_CHANGED)
+    {
+        lv_obj_t *slider = lv_event_get_target(e);
+        int val = lv_slider_get_value(slider);
+        set_temperature = val / 10.0f;
+
+        update_set_temp_label();
+        lv_event_stop_bubbling(e);
+    }
+}
+
+
 
 void main_screen_init(void)
 {
@@ -72,6 +87,19 @@ void main_screen_init(void)
 
 
     lv_scr_load(ui_main_screen); // <- KLUCZOWE
+
+    //Slider
+    lv_obj_t *slider = lv_slider_create(ui_main_screen);
+    lv_slider_set_range(slider, 100, 400); // 10.0–40.0°C
+    lv_slider_set_value(slider, (int)(set_temperature * 10), LV_ANIM_OFF);
+
+    // Styl i pozycjonowanie slidera
+    lv_obj_set_size(slider, lv_pct(85), 30); // szerokość 85%, wysokość 30px
+    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    // Callback slidera
+    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
 
     // Etykieta temperatury
     label_temp = lv_label_create(ui_main_screen);
@@ -85,31 +113,15 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
 
-    // Etykieta zadanej temperatury
-    label_target = lv_label_create(ui_main_screen);
-    lv_label_set_text(label_target, "Zadana: 22°C");
-    lv_obj_set_style_text_color(label_target, lv_color_white(), LV_PART_MAIN);
-    lv_obj_align(label_target, LV_ALIGN_TOP_MID, 0, 140);
+    // Suwak do ustawiania temperatury
+    label_set_temp = lv_label_create(ui_main_screen);
+    lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label_set_temp, &lv_font_montserrat_28_pl, LV_PART_MAIN);
+    lv_obj_align(label_set_temp, LV_ALIGN_BOTTOM_MID, 0, -50);
 
-    // Przycisk minus
-    btn_minus = lv_btn_create(ui_main_screen);
-    lv_obj_set_size(btn_minus, 60, 60);
-    lv_obj_align(btn_minus, LV_ALIGN_CENTER, -80, 100);  // ← bezpiecznie nad dolną krawędzią
-    lv_obj_add_event_cb(btn_minus, btn_minus_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *label_minus = lv_label_create(btn_minus);
-    lv_label_set_text(label_minus, "-");
-    lv_obj_center(label_minus);
-    lv_obj_set_style_text_font(label_minus, &lv_font_montserrat_28_pl, LV_PART_MAIN);
+    // Callback do slidera
+    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Przycisk plus
-    btn_plus = lv_btn_create(ui_main_screen);
-    lv_obj_set_size(btn_plus, 60, 60);
-    lv_obj_align(btn_plus, LV_ALIGN_CENTER, 80, 100);   // ← symetrycznie
-    lv_obj_add_event_cb(btn_plus, btn_plus_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *label_plus = lv_label_create(btn_plus);
-    lv_label_set_text(label_plus, "+");
-    lv_obj_center(label_plus);
-    lv_obj_set_style_text_font(label_plus, &lv_font_montserrat_28_pl, LV_PART_MAIN);
 
     // Etykieta zadanej temperatury do regulacji
     label_set_temp = lv_label_create(ui_main_screen);
