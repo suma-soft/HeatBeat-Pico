@@ -88,19 +88,6 @@ void main_screen_init(void)
 
     lv_scr_load(ui_main_screen); // <- KLUCZOWE
 
-    //Slider
-    lv_obj_t *slider = lv_slider_create(ui_main_screen);
-    lv_slider_set_range(slider, 100, 400); // 10.0–40.0°C
-    lv_slider_set_value(slider, (int)(set_temperature * 10), LV_ANIM_OFF);
-
-    // Styl i pozycjonowanie slidera
-    lv_obj_set_size(slider, lv_pct(85), 30); // szerokość 85%, wysokość 30px
-    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -30);
-
-    // Callback slidera
-    lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-
     // Etykieta temperatury
     label_temp = lv_label_create(ui_main_screen);
     lv_label_set_text(label_temp, "Temperatura: 21.4°C");
@@ -114,20 +101,26 @@ void main_screen_init(void)
     lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
 
     // Suwak do ustawiania temperatury
-    label_set_temp = lv_label_create(ui_main_screen);
-    lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(label_set_temp, &lv_font_montserrat_28_pl, LV_PART_MAIN);
-    lv_obj_align(label_set_temp, LV_ALIGN_BOTTOM_MID, 0, -50);
+    lv_obj_t *slider = lv_slider_create(ui_main_screen);
+    lv_slider_set_range(slider, 100, 400);  // 10.0°C – 40.0°C (x10)
+    lv_slider_set_value(slider, (int)(set_temperature * 10), LV_ANIM_OFF);
 
-    // Callback do slidera
+    // Rozmiar i pozycja dopasowana do okrągłego ekranu
+    lv_obj_set_size(slider, 320, 20); // szerokość 320px
+    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -80); // wyżej o 50px niż wcześniej
+
+    // Styl
+    lv_obj_set_style_bg_color(slider, lv_color_make(80, 80, 80), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, lv_color_make(80, 80, 80), LV_PART_MAIN);
+
+    // Callback
     lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
 
     // Etykieta zadanej temperatury do regulacji
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(label_set_temp, &lv_font_montserrat_28_pl, LV_PART_MAIN);
-    lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_align(label_set_temp, LV_ALIGN_BOTTOM_MID, 0, -110); // umieszczone nad suwakiem
     update_set_temp_label();
 }
 
