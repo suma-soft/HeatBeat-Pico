@@ -4,6 +4,10 @@
 
 void update_set_temp_label(void);
 static void update_arc_color(lv_obj_t *arc, float temperature);
+static lv_color_t interpolate_rgb(int r1, int g1, int b1, int r2, int g2, int b2, float ratio);
+
+// Przechowujemy kolor bazowy dla kropki (ustawiany w update_arc_color)
+static lv_color_t knob_base_color;
 
 lv_obj_t *ui_main_screen;
 lv_obj_t *label_set_temp;
@@ -59,24 +63,106 @@ void update_set_temp_label(void) {
     lv_label_set_text(label_set_temp, buf);
 }
 
+static lv_color_t knob_base_color;
+
+static void animate_ironman_breath(void *obj, int32_t pad)
+{
+    lv_obj_t *arc = (lv_obj_t *)obj;
+
+    // Rozmiar kropki (10–16 px)
+    lv_obj_set_style_pad_all(arc, pad, LV_PART_KNOB);
+
+   // Normalizacja: pad z zakresu 10–16 → ratio 0.0 – 1.0
+    float ratio = (float)(pad - 10) / (16 - 10);
+
+    // Kolory pulsacji:
+    // 🔸 Kolor minimalny (ceglasty): RGB(200, 80, 60)
+    // 🔴 Kolor maksymalny (pełna czerwień): RGB(255, 50, 50)
+    lv_color_t dimmed = interpolate_rgb(200, 80, 60, 255, 50, 50, ratio);
+
+    // Zastosuj jednocześnie na kropce i tle łuku
+    lv_obj_set_style_bg_color(arc, dimmed, LV_PART_KNOB);
+    lv_obj_set_style_arc_color(arc, dimmed, LV_PART_KNOB);
+    lv_obj_set_style_arc_color(arc, dimmed, LV_PART_MAIN);
+}
+
+static lv_color_t interpolate_rgb(int r1, int g1, int b1, int r2, int g2, int b2, float ratio)
+{
+    int r = r1 + (int)((r2 - r1) * ratio);
+    int g = g1 + (int)((g2 - g1) * ratio);
+    int b = b1 + (int)((b2 - b1) * ratio);
+    return lv_color_make(r, g, b);
+}
+
+static lv_color_t interpolate_color(float temp)
+{
+    if (temp <= 17.0f)
+        return lv_color_make(100, 200, 255);  // niebieski
+
+    if (temp <= 21.0f)
+        return interpolate_rgb(100, 200, 255, 100, 255, 100, (temp - 17.0f) / 4.0f);  // → zielony
+
+    if (temp <= 24.0f)
+        return interpolate_rgb(100, 255, 100, 255, 255, 100, (temp - 21.0f) / 3.0f);  // → żółty
+
+    if (temp <= 27.0f)
+        return interpolate_rgb(255, 255, 100, 200, 80, 60, (temp - 24.0f) / 3.0f);    // → ceglasta
+
+    if (temp < 30.0f)
+        return interpolate_rgb(200, 80, 60, 255, 50, 50, (temp - 27.0f) / 3.0f);      // → jasna czerwień
+
+    return lv_color_make(255, 50, 50);  // pełna czerwień (od 30°C)
+}
+
+
 static void update_arc_color(lv_obj_t *arc, float temperature)
 {
-    lv_color_t color;
+    lv_color_t color = interpolate_color(temperature);
 
-    if (temperature <= 15.0f) {
-        color = lv_color_make(100, 200, 255); // ❄️ niebieski
-    } else if (temperature <= 25.0f) {
-        color = lv_color_make(100, 255, 100); // 🌿 zielony
-    } else if (temperature <= 30.0f) {
-        color = lv_color_make(255, 180, 50);  // ☀️ pomarańczowy
-    } else {
-        color = lv_color_make(255, 50, 50);   // 🔥 czerwony
+    // zapisz kolor bazowy (do animacji)
+    knob_base_color = color;
+
+    // Tło łuku
+    lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
+
+    // Pasek aktywny (stały)
+    lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_INDICATOR);
+
+    // Kropka – kolor bazowy
+    lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(arc, color, LV_PART_KNOB);
+
+    // Reset stylów (nieprzezroczystość 100%)
+    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_arc_opa(arc, LV_OPA_COVER, LV_PART_MAIN);
+
+    if (temperature >= 30.0f)
+    {
+        // 🌬️ Start efektu Iron Mana
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, arc);
+        lv_anim_set_exec_cb(&a, animate_ironman_breath);
+        lv_anim_set_values(&a, 10, 16);
+        lv_anim_set_time(&a, 1000);            // tempo oddechu
+        lv_anim_set_playback_time(&a, 1000);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
     }
-
-    // 🔄 Tylko tło zmienne
-    lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);              // zmieniamy tło
-    lv_obj_set_style_arc_color(arc, lv_color_make(80, 80, 80), LV_PART_INDICATOR); // wskaźnik stały
+    else
+    {
+        // ❌ Zatrzymaj efekt
+        lv_anim_del(arc, animate_ironman_breath);
+        lv_obj_set_style_pad_all(arc, 10, LV_PART_KNOB);
+        lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
+        lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
+        lv_obj_set_style_bg_color(arc, color, LV_PART_KNOB);
+    }
 }
+
+
+
 
 void arc_event_cb(lv_event_t *e)
 {
