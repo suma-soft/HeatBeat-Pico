@@ -3,6 +3,7 @@
 #include "lv_font_montserrat_28_pl.h"
 
 void update_set_temp_label(void);
+static void update_arc_color(lv_obj_t *arc, float temperature);
 
 lv_obj_t *ui_main_screen;
 lv_obj_t *label_set_temp;
@@ -45,29 +46,52 @@ static void btn_event_cb(lv_event_t *e) {
     update_labels();
 }
 
-static void slider_event_cb(lv_event_t *e) {
+void slider_event_cb(lv_event_t *e) {
     lv_obj_t *arc = lv_event_get_target(e);
-    int value = lv_arc_get_value(arc);
-    set_temperature = value / 10.0f;
+    int val = lv_arc_get_value(arc);
+    set_temperature = val / 10.0f;
+    update_set_temp_label();
 }
 
-void update_set_temp_label() {
+void update_set_temp_label(void) {
     static char buf[32];
     snprintf(buf, sizeof(buf), "Zadana: %.1f°C", set_temperature);
     lv_label_set_text(label_set_temp, buf);
 }
 
+static void update_arc_color(lv_obj_t *arc, float temperature)
+{
+    lv_color_t color;
+
+    if (temperature <= 15.0f) {
+        color = lv_color_make(100, 200, 255); // ❄️ niebieski
+    } else if (temperature <= 25.0f) {
+        color = lv_color_make(100, 255, 100); // 🌿 zielony
+    } else if (temperature <= 30.0f) {
+        color = lv_color_make(255, 180, 50);  // ☀️ pomarańczowy
+    } else {
+        color = lv_color_make(255, 50, 50);   // 🔥 czerwony
+    }
+
+    // 🔄 Tylko tło zmienne
+    lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);              // zmieniamy tło
+    lv_obj_set_style_arc_color(arc, lv_color_make(80, 80, 80), LV_PART_INDICATOR); // wskaźnik stały
+}
 
 void arc_event_cb(lv_event_t *e)
 {
-    lv_event_code_t code = lv_event_get_code(e);  // 🟢 pobieramy typ zdarzenia
-    lv_obj_t *arc = lv_event_get_target(e);       // 🟢 obiekt, który wywołał event
-
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *arc = lv_event_get_target(e);
     if (code == LV_EVENT_VALUE_CHANGED)
     {
-        int val = lv_arc_get_value(arc);          // 🟢 pobieramy wartość z łuku
-        set_temperature = val / 10.0f;
+        int val = lv_arc_get_value(arc);
+
+        // 🔄 Odwrócenie – min + max - val
+        int reversed_val = 100 + 400 - val;
+
+        set_temperature = reversed_val / 10.0f;
         update_set_temp_label();
+        update_arc_color(arc, set_temperature);
     }
 }
 
@@ -94,31 +118,47 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
 
-    // Tworzenie łuku
-    lv_obj_t *arc = lv_arc_create(ui_main_screen); 
-    lv_obj_set_size(arc, 320, 320);
-    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 50); // wyśrodkowany poziomo, przesunięty w dół
+    lv_obj_t *arc = lv_arc_create(ui_main_screen);
 
-    // Zakres i wartość (x10 dla wartości połówkowych)
-    lv_arc_set_range(arc, 100, 400);
+    // Ustaw rozmiar
+    lv_obj_set_size(arc, 466, 466);
+
+    // Zamiast dolnej ćwiartki, użyj górnej i obróć
+    lv_arc_set_bg_angles(arc, 0, 180); // 0° do 180° (górna część)
+
+    // Pozycjonowanie
+    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);  // niżej na ekranie
+
+    // Zakres i wartość
+    lv_arc_set_range(arc, 100, 400);  // 10.0°C – 40.0°C (x10)
     lv_arc_set_value(arc, (int)(set_temperature * 10));
 
-    // Zakres widocznego łuku (90° – ćwiartka): od 135° do 225°
-    lv_arc_set_angles(arc, 135, 225);
-
-    // tło łuku
-    lv_obj_set_style_arc_color(arc, lv_color_make(80, 80, 80), LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    // gałka łuku
-    lv_obj_set_style_bg_color(arc, lv_color_white(), LV_PART_KNOB | LV_STATE_DEFAULT);
-
     // Callback
-    lv_obj_add_event_cb(arc, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);  // ✅ DZIAŁA w LVGL v8
+    lv_obj_add_event_cb(arc, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Styl
+    lv_obj_set_style_arc_width(arc, 25, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc, 25, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc, lv_color_make(50, 50, 50), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc, 10, LV_PART_KNOB);
+
+    // Kropka (knob)
+    lv_obj_set_style_bg_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
+
+    //interaktywny łuk
+    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE); // just in case
+    lv_obj_add_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(arc, LV_OBJ_FLAG_ADV_HITTEST); // lepsze dopasowanie dotyku
 
     // Etykieta zadanej temperatury do regulacji
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 0); // środek okręgu
     update_set_temp_label();
+    update_arc_color(arc, set_temperature);
+    
 }
-
