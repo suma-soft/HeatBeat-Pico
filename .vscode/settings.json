@@ -11,12 +11,6 @@
         "debug": {
             "statusBarVisibility": "hidden"
         }
-
-    
-    
-    
-
-
     },
     "cmake.configureOnEdit": true,
     "cmake.automaticReconfigure": true,
@@ -24,7 +18,6 @@
     "cmake.generator": "Ninja",
     "cmake.cmakePath": "${userHome}/.pico-sdk/cmake/v3.31.5/bin/cmake",
     "C_Cpp.debugShortcut": false,
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "terminal.integrated.env.windows": {
         "PICO_SDK_PATH": "${env:USERPROFILE}/.pico-sdk/sdk/2.2.0",
         "PICO_TOOLCHAIN_PATH": "${env:USERPROFILE}/.pico-sdk/toolchain/14_2_Rel1",
@@ -43,9 +36,5 @@
     "raspberry-pi-pico.cmakeAutoConfigure": false,
     "raspberry-pi-pico.useCmakeTools": true,
     "raspberry-pi-pico.cmakePath": "${HOME}/.pico-sdk/cmake/v3.31.5/bin/cmake",
-    "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja",
-    "C_Cpp.errorSquiggles": "enabled",
-    "files.associations": {
-        "main_screen.h": "c"
-    }
+    "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja"
 }

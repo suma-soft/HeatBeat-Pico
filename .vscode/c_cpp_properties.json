@@ -4,10 +4,7 @@
             "name": "Pico",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${userHome}/.pico-sdk/sdk/2.2.0/**",
-                "${workspaceFolder}/examples/lvgl/factory",
-                "${workspaceFolder}/examples/lvgl/factory/font",
-                "${workspaceFolder}"
+                "${userHome}/.pico-sdk/sdk/2.2.0/**"
             ],
             "forcedInclude": [
                 "${userHome}/.pico-sdk/sdk/2.2.0/src/common/pico_base_headers/include/pico.h",
