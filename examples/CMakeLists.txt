@@ -1,1 +1,3 @@
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lvgl)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

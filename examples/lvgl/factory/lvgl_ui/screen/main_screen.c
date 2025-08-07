@@ -1,6 +1,7 @@
 #include "main_screen.h"
 #include <stdio.h>
 #include "lv_font_montserrat_28_pl.h"
+#include "../../bme280_port.h"
 
 void update_set_temp_label(void);
 static void update_arc_color(lv_obj_t *arc, float temperature);
@@ -15,6 +16,9 @@ lv_obj_t *btn_plus;
 lv_obj_t *btn_minus;
 
 float set_temperature = 21.0f; // domyślna temperatura
+float current_temp = 0;
+int humidity = 0;
+
 
 static lv_obj_t *label_temp;
 static lv_obj_t *label_humi;
@@ -23,10 +27,9 @@ static lv_obj_t *btn_up;
 static lv_obj_t *btn_down;
 
 static int target_temp = 22;
-static float current_temp = 21.4;
-static int humidity = 44;
+static struct bme280_data bme_data;
 
-static void update_labels()
+void update_labels()
 {
     char buf[32];
 
@@ -181,10 +184,27 @@ void arc_event_cb(lv_event_t *e)
     }
 }
 
-
+//void update_bme_data() {
+//    int8_t result = bme280_read_data(&bme_data);
+//    if (result == BME280_OK) {
+//        current_temp = bme_data.temperature;
+//        humidity = (int)(bme_data.humidity + 0.5f);  // zaokrąglamy
+//        update_labels();
+//    } else {
+//        printf("❌ Błąd odczytu danych z BME280: %d\n", result);
+//    }
+//}
 
 void main_screen_init(void)
 {
+    //int8_t status = bme280_init_default();
+    //if (status == BME280_OK) {
+    //    printf("✅ BME280 zainicjalizowany poprawnie\n");
+    //    update_bme_data();
+    //} else {
+    //    printf(" Błąd inicjalizacji BME280: %d\n", status);
+    // }
+
     ui_main_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_text_font(ui_main_screen, &lv_font_montserrat_28_pl, 0);
@@ -247,4 +267,6 @@ void main_screen_init(void)
     update_set_temp_label();
     update_arc_color(arc, set_temperature);
     
+    //lv_timer_create((lv_timer_cb_t)update_bme_data, 5000, NULL);
+
 }

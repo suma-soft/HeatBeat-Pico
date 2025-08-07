@@ -30,7 +30,10 @@ extern lv_obj_t *label_gyro_z;
 
 extern lv_obj_t *label_brightness;
 
+extern float current_temp;
+extern int humidity;
 
+void update_labels(void);
 void main_screen_init(void);
 
 #ifdef __cplusplus
