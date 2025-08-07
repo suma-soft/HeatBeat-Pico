@@ -157,7 +157,7 @@ void arc_event_cb(lv_event_t *e)
     }
 }
 
-static void update_bme_data()
+void update_bme_data()
 {
     int8_t result = bme280_read_data(&bme_data);
     if (result == BME280_OK) {

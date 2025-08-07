@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+void update_bme_data(void);
+
 extern lv_obj_t *ui_main_screen;
 
 extern lv_obj_t *label_time;
