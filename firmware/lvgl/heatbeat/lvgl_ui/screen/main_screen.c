@@ -171,13 +171,13 @@ void update_bme_data()
 
 void main_screen_init(void)
 {
-    int8_t status = bme280_init_default();
-    if (status == BME280_OK) {
-        printf("✅ BME280 zainicjalizowany poprawnie\n");
-        update_bme_data();
-    } else {
-        printf(" Błąd inicjalizacji BME280: %d\n", status);
-    }
+    //int8_t status = bme280_init_default();
+    //if (status == BME280_OK) {
+    //    printf("✅ BME280 zainicjalizowany poprawnie\n");
+    //    update_bme_data();
+    //} else {
+    //    printf(" Błąd inicjalizacji BME280: %d\n", status);
+    //}
 
     label_time = lv_label_create(ui_main_screen);
 

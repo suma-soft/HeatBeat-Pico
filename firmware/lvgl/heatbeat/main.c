@@ -92,18 +92,22 @@ int main(void) {
     print_free_ram("Po sleep 500ms");
 
     // --- Inicjalizacja czujnika BME280 (temperatura, wilgotność) ---
-    bme280_init_default();
-    printf("bme280_init_default (BME) OK\r\n");
-    print_free_ram("Po bme280_init_default");
+    // bme280_init_default();
+    // printf("bme280_init_default (BME) OK\r\n");
+    // print_free_ram("Po bme280_init_default");
 
     // --- Inicjalizacja timer'a do obsługi ticków LVGL ---
+    printf("Przed add_repeating_timer_ms\r\n");
     static struct repeating_timer t;
     add_repeating_timer_ms(LVGL_TICK_MS, tick_cb, NULL, &t);
     printf("add_repeating_timer_ms OK\r\n");
     print_free_ram("Po add_repeating_timer_ms");
 
+    // --- Przed wejściem do pętli głównej ---
+    printf("Przed wejściem do pętli głównej\r\n");
+
     // --- Pętla główna: odświeżanie LVGL i cykliczne odczyty czujników ---
-    struct bme280_data data;
+    //struct bme280_data data;
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
     struct tm now_tm;
@@ -141,18 +145,18 @@ int main(void) {
         }
 
         // --- Aktualizacja wartości z BME280 co 2 sekundy ---
-        if (now - last_read > 2000) {
-            printf("Odczyt BME280...\r\n");
-            int8_t res = bme280_read_data(&data);
-            print_free_ram("Po bme280_read_data");
-            if (res == 0) {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "T:%.2fC H:%.1f%%", data.temperature, data.humidity);
-                printf("lv_label_set_text(label_temp)...\r\n");
-                lv_label_set_text(label_temp, buf);
-                print_free_ram("Po lv_label_set_text label_temp");
-            }
-            last_read = now;
-        }
+        // if (now - last_read > 2000) {
+        //     printf("Odczyt BME280...\r\n");
+        //     int8_t res = bme280_read_data(&data);
+        //     print_free_ram("Po bme280_read_data");
+        //     if (res == 0) {
+        //         char buf[64];
+        //         snprintf(buf, sizeof(buf), "T:%.2fC H:%.1f%%", data.temperature, data.humidity);
+        //         printf("lv_label_set_text(label_temp)...\r\n");
+        //         lv_label_set_text(label_temp, buf);
+        //         print_free_ram("Po lv_label_set_text label_temp");
+        //     }
+        //     last_read = now;
+        // }
     }
 }
