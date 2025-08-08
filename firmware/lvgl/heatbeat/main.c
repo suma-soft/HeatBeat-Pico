@@ -11,7 +11,6 @@
 #include "lvgl_ui/screen/main_screen.h"
 
 #define LVGL_TICK_MS 5
-
 #define DISP_HOR_RES 466
 #define DISP_VER_RES 466
 
@@ -23,8 +22,8 @@ extern char __StackLimit, __bss_end__;
 
 // --- Funkcja drukująca RAM ---
 static void print_free_ram(const char* msg) {
-    uintptr_t free_ram = (uintptr_t)&__StackLimit - (uintptr_t)&__bss_end__;
-    printf("[MEM] %s: wolne RAM szacunkowo: %lu bajtów\r\n", msg, (unsigned long)free_ram);
+    uint32_t free_ram = (uint32_t)&__StackLimit - (uint32_t)&__bss_end__;
+    printf("[RAM] %s: Wolna RAM: %lu bajtów\n", msg, free_ram);
 }
 
 int main(void) {
@@ -76,7 +75,7 @@ int main(void) {
     printf("sleep po init wyświetlacza OK\r\n");
     print_free_ram("Po sleep 200ms");
 
-    // --- Inicjalizacja czujnika BME280 (temperatura, wilgotność) ---
+    // --- Inicjalizacja czujnika BME280 (temperatura, wilgotność, ciśnienie) ---
     printf("=== INICJALIZACJA BME280 ===\n");
     printf("Przed bme280_init_default()\n");
     int8_t status = bme280_init_default();
@@ -115,20 +114,17 @@ int main(void) {
     // --- Przed wejściem do pętli głównej ---
     printf("Przed wejściem do pętli głównej\r\n");
 
-    // --- Pętla główna: odświeżanie LVGL i cykliczne odczyty czujników ---
+    // --- Zmienne pomocnicze do pętli głównej ---
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
+    uint32_t mem_print_timer = last_read;
     struct tm now_tm;
-    uint32_t mem_print_timer = last_time;
-
-    // Dodane do aktualizacji danych BME na ekranie
     struct bme280_data bme_data;
 
+    // --- Pętla główna: odświeżanie LVGL i cykliczne odczyty czujników ---
     while (true) {
         // --- Obsługa LVGL ---
-        printf("lv_timer_handler()...\r\n");
         lv_timer_handler();
-        print_free_ram("Po lv_timer_handler");
         sleep_ms(LVGL_TICK_MS);
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -141,25 +137,19 @@ int main(void) {
 
         // --- Aktualizacja czasu co sekundę ---
         if (now - last_time > 1000) {
-            printf("Aktualizacja czasu RTC...\r\n");
             bsp_pcf85063_get_time(&now_tm);
-            print_free_ram("Po bsp_pcf85063_get_time");
             char buf[32];
             snprintf(buf, sizeof(buf), "%02d:%02d:%02d", now_tm.tm_hour, now_tm.tm_min, now_tm.tm_sec);
             // Przypisz do labela na ekranie głównym
             if (label_time) {
-                printf("lv_label_set_text(label_time)...\r\n");
                 lv_label_set_text(label_time, buf);
-                print_free_ram("Po lv_label_set_text label_time");
             }
             last_time = now;
         }
 
         // --- Aktualizacja wartości z BME280 co 2 sekundy ---
         if (now - last_read > 2000) {
-            printf("Odczyt BME280...\r\n");
             int8_t res = bme280_read_data(&bme_data);
-            print_free_ram("Po bme280_read_data");
             if (res == 0) {
                 // Przypisz do globalnych zmiennych main_screen, by update_labels() mogło je pokazać
                 extern float current_temp;
@@ -168,12 +158,7 @@ int main(void) {
                 humidity = (int)(bme_data.humidity + 0.5f);
                 // wywołaj aktualizację etykiet na ekranie
                 extern void update_labels(void);
-                //update_labels();
-
-                // Print na konsolę
-                printf("BME: T=%.2fC H=%d%% P=%.2f hPa\n", current_temp, humidity, bme_data.pressure/100.0f);
-            } else {
-                printf("❌ Błąd odczytu danych z BME280: %d\n", res);
+                update_labels();
             }
             last_read = now;
         }

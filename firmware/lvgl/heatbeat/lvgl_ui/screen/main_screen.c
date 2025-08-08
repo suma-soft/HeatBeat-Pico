@@ -6,6 +6,7 @@
 // Globalne zmienne używane w main.c
 float current_temp = 0;
 int humidity = 0;
+float pressure = 0; // <-- DODANE, analogicznie do current_temp i humidity
 struct bme280_data bme_data;
 
 void update_set_temp_label(void);
@@ -33,19 +34,28 @@ static int target_temp = 22;
 
 void update_labels()
 {
+    printf("update_labels: start\n");
+
+    if (label_temp == NULL) printf("label_temp is NULL!\n");
+    if (label_humi == NULL) printf("label_humi is NULL!\n");
+    if (label_pres == NULL) printf("label_pres is NULL!\n");
+    if (label_target == NULL) printf("label_target is NULL!\n");
+
     char buf[32];
 
     snprintf(buf, sizeof(buf), "Temperatura: %.1f°C", current_temp);
-    lv_label_set_text(label_temp, buf);
+    if (label_temp) lv_label_set_text(label_temp, buf);
 
     snprintf(buf, sizeof(buf), "Wilgotność: %d%%", humidity);
-    lv_label_set_text(label_humi, buf);
+    if (label_humi) lv_label_set_text(label_humi, buf);
 
-    snprintf(buf, sizeof(buf), "Ciśnienie: %.2f hPa", bme_data.pressure / 100.0f);
-    lv_label_set_text(label_pres, buf);
+    snprintf(buf, sizeof(buf), "Ciśnienie: %.2f hPa", pressure / 100.0f); // <-- TERAZ Z GLOBALNEJ
+    if (label_pres) lv_label_set_text(label_pres, buf);
 
     snprintf(buf, sizeof(buf), "Zadana: %.1f°C", target_temp);
-    lv_label_set_text(label_target, buf);
+    if (label_target) lv_label_set_text(label_target, buf);
+
+    printf("update_labels: end\n");
 }
 
 static void btn_event_cb(lv_event_t *e) {
@@ -157,12 +167,14 @@ void arc_event_cb(lv_event_t *e)
     }
 }
 
-void update_bme_data()
-{
+void update_bme_data() {
     int8_t result = bme280_read_data(&bme_data);
     if (result == BME280_OK) {
         current_temp = bme_data.temperature;
         humidity = (int)(bme_data.humidity + 0.5f);
+        pressure = bme_data.pressure; // <-- TO PRZYPISANIE!!
+        printf("Odczytane ciśnienie z BME: %.2f Pa\n", bme_data.pressure);
+        printf("Przed update_labels pressure = %.2f\n", pressure);
         update_labels();
     } else {
         printf("❌ Błąd odczytu danych z BME280: %d\n", result);
