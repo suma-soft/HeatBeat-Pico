@@ -154,8 +154,10 @@ int main(void) {
                 // Przypisz do globalnych zmiennych main_screen, by update_labels() mogło je pokazać
                 extern float current_temp;
                 extern int humidity;
+                extern float pressure; // <-- DODAJ TO!
                 current_temp = bme_data.temperature;
                 humidity = (int)(bme_data.humidity + 0.5f);
+                pressure = bme_data.pressure; // <-- DODAJ TO!
                 // wywołaj aktualizację etykiet na ekranie
                 extern void update_labels(void);
                 update_labels();
