@@ -168,7 +168,7 @@ int main(void) {
                 humidity = (int)(bme_data.humidity + 0.5f);
                 // wywołaj aktualizację etykiet na ekranie
                 extern void update_labels(void);
-                update_labels();
+                //update_labels();
 
                 // Print na konsolę
                 printf("BME: T=%.2fC H=%d%% P=%.2f hPa\n", current_temp, humidity, bme_data.pressure/100.0f);
