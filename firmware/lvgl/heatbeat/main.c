@@ -76,6 +76,20 @@ int main(void) {
     printf("sleep po init wyświetlacza OK\r\n");
     print_free_ram("Po sleep 200ms");
 
+    // --- Inicjalizacja czujnika BME280 (temperatura, wilgotność) ---
+    printf("=== INICJALIZACJA BME280 ===\n");
+    printf("Przed bme280_init_default()\n");
+    int8_t status = bme280_init_default();
+    printf("Po bme280_init_default(), status = %d\n", status);
+
+    if (status == 0) {
+        printf("✅ BME280 zainicjalizowany poprawnie!\n");
+    } else {
+        printf("❌ Błąd inicjalizacji BME280: %d\n", status);
+    }
+    printf("============================\n");
+    print_free_ram("Po bme280_init_default");
+
     // --- Inicjalizacja głównego ekranu UI (np. wygenerowanego przez SquareLine Studio) ---
     main_screen_init();
     printf("main_screen_init OK\r\n");
@@ -91,11 +105,6 @@ int main(void) {
     printf("sleep po lv_scr_load OK\r\n");
     print_free_ram("Po sleep 500ms");
 
-    // --- Inicjalizacja czujnika BME280 (temperatura, wilgotność) ---
-    // bme280_init_default();
-    // printf("bme280_init_default (BME) OK\r\n");
-    // print_free_ram("Po bme280_init_default");
-
     // --- Inicjalizacja timer'a do obsługi ticków LVGL ---
     printf("Przed add_repeating_timer_ms\r\n");
     static struct repeating_timer t;
@@ -107,11 +116,13 @@ int main(void) {
     printf("Przed wejściem do pętli głównej\r\n");
 
     // --- Pętla główna: odświeżanie LVGL i cykliczne odczyty czujników ---
-    //struct bme280_data data;
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
     struct tm now_tm;
     uint32_t mem_print_timer = last_time;
+
+    // Dodane do aktualizacji danych BME na ekranie
+    struct bme280_data bme_data;
 
     while (true) {
         // --- Obsługa LVGL ---
@@ -145,18 +156,26 @@ int main(void) {
         }
 
         // --- Aktualizacja wartości z BME280 co 2 sekundy ---
-        // if (now - last_read > 2000) {
-        //     printf("Odczyt BME280...\r\n");
-        //     int8_t res = bme280_read_data(&data);
-        //     print_free_ram("Po bme280_read_data");
-        //     if (res == 0) {
-        //         char buf[64];
-        //         snprintf(buf, sizeof(buf), "T:%.2fC H:%.1f%%", data.temperature, data.humidity);
-        //         printf("lv_label_set_text(label_temp)...\r\n");
-        //         lv_label_set_text(label_temp, buf);
-        //         print_free_ram("Po lv_label_set_text label_temp");
-        //     }
-        //     last_read = now;
-        // }
+        if (now - last_read > 2000) {
+            printf("Odczyt BME280...\r\n");
+            int8_t res = bme280_read_data(&bme_data);
+            print_free_ram("Po bme280_read_data");
+            if (res == 0) {
+                // Przypisz do globalnych zmiennych main_screen, by update_labels() mogło je pokazać
+                extern float current_temp;
+                extern int humidity;
+                current_temp = bme_data.temperature;
+                humidity = (int)(bme_data.humidity + 0.5f);
+                // wywołaj aktualizację etykiet na ekranie
+                extern void update_labels(void);
+                update_labels();
+
+                // Print na konsolę
+                printf("BME: T=%.2fC H=%d%% P=%.2f hPa\n", current_temp, humidity, bme_data.pressure/100.0f);
+            } else {
+                printf("❌ Błąd odczytu danych z BME280: %d\n", res);
+            }
+            last_read = now;
+        }
     }
 }
