@@ -3,7 +3,6 @@
 #include "lv_font_montserrat_28_pl.h"
 #include "../../bme280_port.h"
 
-
 // Globalne zmienne używane w main.c
 float current_temp = 0;
 int humidity = 0;
@@ -15,19 +14,20 @@ static lv_color_t interpolate_rgb(int r1, int g1, int b1, int r2, int g2, int b2
 
 static lv_color_t knob_base_color;
 
+// Usunięto static, aby były dostępne w całym projekcie
 lv_obj_t *ui_main_screen;
 lv_obj_t *label_set_temp;
 lv_obj_t *btn_plus;
 lv_obj_t *btn_minus;
+lv_obj_t *label_time;
+lv_obj_t *label_pres;
+lv_obj_t *label_temp;
+lv_obj_t *label_humi;
+lv_obj_t *label_target;
+lv_obj_t *btn_up;
+lv_obj_t *btn_down;
 
 float set_temperature = 21.0f;
-
-static lv_obj_t *label_pres;
-static lv_obj_t *label_temp;
-static lv_obj_t *label_humi;
-static lv_obj_t *label_target;
-static lv_obj_t *btn_up;
-static lv_obj_t *btn_down;
 
 static int target_temp = 22;
 
@@ -178,6 +178,8 @@ void main_screen_init(void)
     } else {
         printf(" Błąd inicjalizacji BME280: %d\n", status);
     }
+
+    label_time = lv_label_create(ui_main_screen);
 
     ui_main_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);

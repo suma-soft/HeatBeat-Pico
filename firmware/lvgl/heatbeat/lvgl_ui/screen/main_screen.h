@@ -32,6 +32,14 @@ extern lv_obj_t *label_gyro_z;
 
 extern lv_obj_t *label_brightness;
 
+extern lv_obj_t *label_temp;
+extern lv_obj_t *label_humi;
+extern lv_obj_t *label_pres;
+extern lv_obj_t *label_set_temp;
+extern lv_obj_t *label_target;
+extern lv_obj_t *btn_up;
+extern lv_obj_t *btn_down;
+
 extern float current_temp;
 extern int humidity;
 
