@@ -40,5 +40,6 @@
     "files.associations": {
         "stdlib.h": "c",
         "bsp_pcf85063.h": "c"
-    }
+    },
+    "C_Cpp.dimInactiveRegions": false
 }
