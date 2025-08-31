@@ -17,7 +17,7 @@
 #include "lwip/ip4_addr.h"
 
 #ifndef ENABLE_HTTP_CLIENT
-#define ENABLE_HTTP_CLIENT 0   // zmień na 1 jeśli chcesz włączyć HTTP klienta
+#define ENABLE_HTTP_CLIENT 0   // zmienić na 1 jeśli chcesz włączyć HTTP klienta
 #endif
 
 #if ENABLE_HTTP_CLIENT
@@ -142,8 +142,8 @@ static void wifi_status_print_once(void) {
 int main(void) {
     stdio_usb_init();
 
-    // Daj 3 s na podłączenie PuTTY, żeby zobaczyć startowe logi
-    absolute_time_t t_limit = make_timeout_time_ms(3000);
+    // Dodatkowe 10 s na podłączenie PuTTY
+    absolute_time_t t_limit = make_timeout_time_ms(10000);
     while (!stdio_usb_connected() && absolute_time_diff_us(get_absolute_time(), t_limit) > 0) {
         sleep_ms(50);
     }
@@ -154,7 +154,7 @@ int main(void) {
     // === WIFI: połącz i zaloguj IP
     bool wifi_ok = wifi_connect_and_log();
 
-    // Inicjalizacja hardware/UI
+    // Inicjalizacja UI
     bsp_i2c_init();
     bsp_pcf85063_init();
 
@@ -239,7 +239,7 @@ int main(void) {
         }
 
 #if ENABLE_HTTP_CLIENT
-        /* Telemetria/target… – jak wcześniej, za-gate’owane na wifi_ok */
+
 #endif
     }
 }
