@@ -12,6 +12,11 @@
             "statusBarVisibility": "hidden"
         }
     },
+    "cmake.configureArgs": [
+        "-DWIFI_SSID=KAMNET_8960",
+        "-DWIFI_PASS=Pawianywchodzanasciany",
+        "-DENABLE_HTTP_CLIENT=OFF"
+    ],
     "cmake.configureOnEdit": true,
     "cmake.automaticReconfigure": true,
     "cmake.configureOnOpen": true,

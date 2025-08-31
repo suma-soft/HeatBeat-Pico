@@ -32,7 +32,7 @@ target_link_libraries(${PROJECT_NAME}
     bme280
     #pico_cyw43_arch_lwip_threadsafe_background
     pico_cyw43_arch_lwip_poll
-    pico_lwip
+    pico_lwip_nosys
     # odkomentuj jeżeli używasz HTTPS:
     # pico_lwip_mbedtls
     # mbedtls
@@ -47,21 +47,15 @@ pico_enable_stdio_uart(${PROJECT_NAME} 0)  # zmień z heatbeat_main
 pico_add_extra_outputs(${PROJECT_NAME})
 
 # --- Parametry przekazywane z linii cmake -D... (żeby nie było "not used") ---
-set(WIFI_SSID         ""                   CACHE STRING "WiFi SSID")
-set(WIFI_PASS         ""                   CACHE STRING "WiFi password")
-set(HEATBEAT_API_BASE "http://127.0.0.1"   CACHE STRING "HeatBeat API base URL")
-
+set(WIFI_SSID "KAMNET_8960" CACHE STRING "WiFi SSID")
+set(WIFI_PASS "Pawianywchodzanasciany" CACHE STRING "WiFi password")
 option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)
 
 target_compile_definitions(heatbeat PRIVATE
-    WIFI_SSID="${WIFI_SSID}"
-    WIFI_PASS="${WIFI_PASS}"
-    HEATBEAT_API_BASE="${HEATBEAT_API_BASE}"
-    ENABLE_HTTP_CLIENT=$<IF:$<BOOL:${ENABLE_HTTP_CLIENT}>,1,0>
+  WIFI_SSID="${WIFI_SSID}"
+  WIFI_PASS="${WIFI_PASS}"
+  ENABLE_HTTP_CLIENT=$<IF:$<BOOL:${ENABLE_HTTP_CLIENT}>,1,0>
 )
-
-target_compile_definitions(heatbeat PRIVATE ENABLE_HTTP_CLIENT=0)
-
 
 add_subdirectory(bme280)
 add_subdirectory(lvgl_ui)
