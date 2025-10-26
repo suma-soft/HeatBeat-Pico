@@ -18,6 +18,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_ui
     ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_ui/screen
     ${CMAKE_CURRENT_SOURCE_DIR}/net
+    # ✅ DODAJ BRAKUJĄCĄ ŚCIEŻKĘ DO arch/sys_arch.h
+    ${PICO_SDK_PATH}/src/rp2_common/pico_lwip/include
 )
 
 # --- Konfiguracja użytkownika ---
@@ -50,18 +52,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     CYW43_LWIP=1
     PICO_CYW43_ARCH_THREADSAFE_BACKGROUND=1
     PICO_BLUETOOTH=0
-
-    # lwIP: włącz netconn + socket API
-    LWIP_NETCONN=1
-    LWIP_SOCKET=1
-    LWIP_TCP=1
-    LWIP_IPV4=1
-    LWIP_DNS=0  # wyłączone, używamy IP literalnych
-
-    # Zwiększone limity (netconn wymaga więcej zasobów)
-    MEMP_NUM_NETCONN=8
-    DEFAULT_TCP_RECVMBOX_SIZE=8
-    TCPIP_MBOX_SIZE=8
 )
 
 # Biblioteki – kolejność ma znaczenie
@@ -72,10 +62,7 @@ target_link_libraries(${PROJECT_NAME}
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_threadsafe_background  # ZMIANA!
-    # HTTPS? odkomentuj:
-    # pico_lwip_mbedtls
-    # mbedtls
+    pico_cyw43_arch_lwip_threadsafe_background
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 

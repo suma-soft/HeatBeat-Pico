@@ -1,3 +1,10 @@
 build
 !.vscode/*
 build/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.rule
+*.stamp
+*.stamp.depend
+cmake_install.cmake
