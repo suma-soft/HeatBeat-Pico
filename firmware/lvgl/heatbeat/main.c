@@ -13,24 +13,14 @@
 // === WIFI / LWIP (RM2: CYW43439)
 #include "pico/cyw43_arch.h"
 
-// lwIP – wariant bez BSD-socketów: używamy API netconn
+// lwIP – podstawowe typy (NO_SYS, bez netconn)
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
-#include "lwip/ip_addr.h"
-#include "lwip/api.h"       // netconn_*
-#include "lwip/inet.h"      // ipaddr_aton (opcjonalnie)
-#include "lwip/netbuf.h"    // netbuf_* (netbuf_data, netbuf_next, netbuf_delete)
 
-#ifndef LWIP_NETCONN
-#  error "LWIP_NETCONN nie jest zdefiniowane - sprawdź konfigurację CMake (NO_SYS vs SYS)."
-#elif LWIP_NETCONN==0
-#  error "LWIP_NETCONN==0 - api netconn wyłączone (masz NO_SYS). Zmień architekturę na threadsafe_background."
-#endif
+// ❌ USUNIĘTO: #include "lwip/api.h" (netconn - wymaga SYS)
+// ❌ USUNIĘTO: sprawdzanie LWIP_NETCONN
 
-// Włącz/wyłącz prostego klienta HTTP
-#ifndef ENABLE_HTTP_CLIENT
-#define ENABLE_HTTP_CLIENT 1
-#endif
+#define ENABLE_HTTP_CLIENT 0  // ❌ Wyłączone (netconn nie działa z NO_SYS)
 
 #define LVGL_TICK_MS 5
 #define DISP_HOR_RES 466
@@ -43,18 +33,8 @@
 #define WIFI_PASS "Pawianywchodzanasciany"
 #endif
 
-// Backend – używamy IP literalnego (bez DNS)
-#ifndef HEATBEAT_API_HOST
-#define HEATBEAT_API_HOST "192.168.55.120"
-#endif
-#ifndef HEATBEAT_API_PORT
-#define HEATBEAT_API_PORT 8000
-#endif
-
-// LVGL tick timer
 static bool tick_cb(struct repeating_timer *t) { lv_tick_inc(LVGL_TICK_MS); return true; }
 
-// Print free RAM (RP2040-specific)
 extern char __StackLimit, __bss_end__;
 static void print_free_ram(const char* msg) {
     uint32_t free_ram = (uint32_t)&__StackLimit - (uint32_t)&__bss_end__;
@@ -65,7 +45,6 @@ static void print_ip4(const ip4_addr_t* ip) {
     printf("%u.%u.%u.%u", ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
 }
 
-/* Pomocniczo: aktywny interfejs (zwykle jedyny) */
 static inline struct netif* get_nif(void) {
     return netif_default ? netif_default : netif_list;
 }
@@ -117,7 +96,6 @@ static bool wifi_connect_and_log(void) {
     return false;
 }
 
-/* Periodyczny status Wi-Fi do terminala */
 static void wifi_status_print_once(void) {
     int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
     const char* s = "UNK";
@@ -145,106 +123,9 @@ static void wifi_status_print_once(void) {
     printf("\n");
 }
 
-#if ENABLE_HTTP_CLIENT
-/* ===== Prosty klient HTTP na netconn (bez BSD socketów) ===== */
-
-static struct netconn* netconn_connect_host(const char* host_ip, uint16_t port)
-/* Zwraca wskaźnik do netconn lub NULL przy błędzie. */
-{
-    ip_addr_t ip;
-    if (!ipaddr_aton(host_ip, &ip)) {
-        printf("[HTTP] ipaddr_aton() fail dla '%s'\n", host_ip);
-        return NULL;
-    }
-
-    struct netconn* nc = netconn_new(NETCONN_TCP);
-    if (!nc) { printf("[HTTP] netconn_new() fail\n"); return NULL; }
-
-    err_t err = netconn_connect(nc, &ip, port);
-    if (err != ERR_OK) {
-        printf("[HTTP] netconn_connect() err=%d\n", (int)err);
-        netconn_delete(nc);
-        return NULL;
-    }
-    return nc;
-}
-
-static int http_exchange_auth(
-    struct netconn* nc,
-    const char* method,           // "GET" lub "POST"
-    const char* path,             // np. "/device/1/settings"
-    const char* host_header,      // np. "192.168.55.120:8000"
-    const char* extra_headers,    // np. "Authorization: Bearer xxx\r\n"
-    const char* body,             // body dla POST (może być NULL)
-    char* out_buf, size_t out_sz  // wyjściowy bufor na body odpowiedzi
-)
-/* Wysyła request i kopiuje BODY odpowiedzi do out_buf. Zwraca liczbę bajtów body, lub -1. */
-{
-    char req[768];
-    int n = snprintf(req, sizeof(req),
-        "%s %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "Connection: close\r\n"
-        "%s"
-        "%s"
-        "\r\n"
-        "%s",
-        method, path, host_header,
-        extra_headers ? extra_headers : "",
-        body ? "Content-Type: application/json\r\n" : "",
-        body ? body : ""
-    );
-    if (n <= 0 || (size_t)n >= sizeof(req)) {
-        printf("[HTTP] req overflow\n");
-        return -1;
-    }
-
-    err_t err = netconn_write(nc, req, (size_t)n, NETCONN_COPY);
-    if (err != ERR_OK) {
-        printf("[HTTP] netconn_write() err=%d\n", (int)err);
-        return -1;
-    }
-
-    // Odbiór całej odpowiedzi do tymczasowego bufora
-    size_t used = 0;
-    struct netbuf* inbuf;
-    while ((err = netconn_recv(nc, &inbuf)) == ERR_OK) {
-        void* data;
-        u16_t len;
-        do {
-            netbuf_data(inbuf, &data, &len);
-            size_t take = (used + len <= out_sz) ? len : (out_sz - used);
-            if (take) {
-                memcpy(out_buf + used, data, take);
-                used += take;
-            }
-        } while (netbuf_next(inbuf) >= 0);
-        netbuf_delete(inbuf);
-    }
-
-    if (used == 0) return -1;
-
-    // Znajdź początek BODY po podwójnym CRLF
-    const char* hdr_end = NULL;
-    for (size_t i = 3; i < used; ++i) {
-        if (out_buf[i-3]=='\r' && out_buf[i-2]=='\n' && out_buf[i-1]=='\r' && out_buf[i]=='\n') {
-            hdr_end = out_buf + i + 1;
-            break;
-        }
-    }
-    if (!hdr_end) return -1;
-
-    size_t body_bytes = (out_buf + used) - hdr_end;
-    memmove(out_buf, hdr_end, body_bytes);
-    if (body_bytes < out_sz) out_buf[body_bytes] = '\0';
-    return (int)body_bytes;
-}
-#endif // ENABLE_HTTP_CLIENT
-
 int main(void) {
     stdio_usb_init();
 
-    // Dodatkowe 10 s na podłączenie PuTTY
     absolute_time_t t_limit = make_timeout_time_ms(10000);
     while (!stdio_usb_connected() && absolute_time_diff_us(get_absolute_time(), t_limit) > 0) {
         sleep_ms(50);
@@ -253,11 +134,9 @@ int main(void) {
     printf("\r\n--- HeatBeat-Pico start! ---\r\n");
     print_free_ram("Boot");
 
-    // === WIFI: połącz i zaloguj IP
     bool wifi_ok = wifi_connect_and_log();
     (void)wifi_ok;
 
-    // Inicjalizacja UI
     bsp_i2c_init();
     bsp_pcf85063_init();
 
@@ -273,13 +152,11 @@ int main(void) {
     static struct repeating_timer t;
     add_repeating_timer_ms(LVGL_TICK_MS, tick_cb, NULL, &t);
 
-    // Timery
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
-    uint32_t last_bme_print = last_read;         // log BME -> co 10 s
-    uint32_t last_wifi_status_print = last_read; // periodyczny status Wi-Fi
+    uint32_t last_bme_print = last_read;
+    uint32_t last_wifi_status_print = last_read;
 
-    // Do wykrywania zmian
     int last_status = -999;
     uint32_t last_ip_raw = 0;
 
@@ -287,12 +164,14 @@ int main(void) {
     struct bme280_data bme_data;
 
     while (true) {
+        // ✅ KLUCZOWE: Obsłuż lwIP w trybie poll
+        cyw43_arch_poll();
+        
         lv_timer_handler();
         sleep_ms(LVGL_TICK_MS);
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
 
-        // Zegar na ekranie
         if (now - last_time > 1000) {
             bsp_pcf85063_get_time(&now_tm);
             char buf[32];
@@ -301,7 +180,6 @@ int main(void) {
             last_time = now;
         }
 
-        // BME280: odczyt co ~2 s, log do terminala co 10 s
         if (now - last_read > 2000) {
             if (bme280_read_data(&bme_data) == 0) {
                 extern float current_temp;
@@ -322,8 +200,7 @@ int main(void) {
             last_read = now;
         }
 
-        // ——— Wi-Fi: periodyczny status
-        if (now - last_wifi_status_print > 10000) { // co 10 s
+        if (now - last_wifi_status_print > 10000) {
             int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
             struct netif* nif = get_nif();
             uint32_t ip_raw = (nif && netif_is_up(nif)) ? netif_ip4_addr(nif)->addr : 0;
@@ -336,29 +213,7 @@ int main(void) {
                 wifi_status_print_once();
             }
             last_wifi_status_print = now;
+   
         }
-
-#if ENABLE_HTTP_CLIENT
-        // PRZYKŁAD: jednorazowy GET co 30 s (zakomentowane, żeby nie zasypywać serwera)
-        /*
-        if ((now % 30000u) < LVGL_TICK_MS) {
-            struct netconn* nc = netconn_connect_host(HEATBEAT_API_HOST, HEATBEAT_API_PORT);
-            if (nc) {
-                char body[600];
-                int got = http_exchange_auth(
-                    nc, "GET", "/device/1/settings",
-                    HEATBEAT_API_HOST ":8000",
-                    NULL, NULL, body, sizeof(body)-1
-                );
-                netconn_close(nc);
-                netconn_delete(nc);
-                if (got > 0) {
-                    body[got] = 0;
-                    printf("[HTTP] settings: %s\n", body);
-                }
-            }
-        }
-        */
-#endif
     }
 }
