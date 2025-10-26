@@ -15,8 +15,14 @@ lv_obj_t *label_temp;
 lv_obj_t *label_humi;
 lv_obj_t *label_target;
 
+// uchwyt na łuk (suwak)
+static lv_obj_t *arc_main = NULL;
+
 float set_temperature = 21.0f;
 static int target_temp = 22;
+
+// sygnał do firmware aby wysłać zmianę do backendu
+extern void heatbeat_on_target_temp_changed(float new_temp);
 
 void update_labels()
 {
@@ -39,7 +45,7 @@ void update_labels()
 void update_set_temp_label(void) {
     char buf[32];
     snprintf(buf, sizeof(buf), "Zadana: %.1f°C", set_temperature);
-    lv_label_set_text(label_set_temp, buf);
+    if (label_set_temp) lv_label_set_text(label_set_temp, buf);
 }
 
 static lv_color_t interpolate_rgb(int r1, int g1, int b1, int r2, int g2, int b2, float ratio)
@@ -78,6 +84,19 @@ static void update_arc_color(lv_obj_t *arc, float temperature)
     lv_obj_set_style_arc_opa(arc, LV_OPA_COVER, LV_PART_MAIN);
 }
 
+// mapowanie: zakres łuku 100..400, odwrócony
+static int temp_to_arc_value(float temp10) { // temp*10
+    int raw = (int)temp10;
+    int v = 100 + 400 - raw;
+    if (v < 100) v = 100;
+    if (v > 400) v = 400;
+    return v;
+}
+static float arc_value_to_temp(int arc_val) {
+    int reversed = 100 + 400 - arc_val;
+    return reversed / 10.0f;
+}
+
 void arc_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -85,11 +104,23 @@ void arc_event_cb(lv_event_t *e)
     if (code == LV_EVENT_VALUE_CHANGED)
     {
         int val = lv_arc_get_value(arc);
-        int reversed_val = 100 + 400 - val;
-        set_temperature = reversed_val / 10.0f;
+        set_temperature = arc_value_to_temp(val);
         update_set_temp_label();
         update_arc_color(arc, set_temperature);
+
+        // zgłoś do firmware (wyśle HTTP POST)
+        heatbeat_on_target_temp_changed(set_temperature);
     }
+}
+
+// === implementacja hooka z main.c: gdy backend zmieni nastawę ===
+void ui_apply_target_temp(float t) {
+    set_temperature = t;
+    if (arc_main) {
+        lv_arc_set_value(arc_main, temp_to_arc_value(set_temperature * 10.0f));
+        update_arc_color(arc_main, set_temperature);
+    }
+    update_set_temp_label();
 }
 
 void main_screen_init(void)
@@ -113,27 +144,27 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_pres, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_pres, LV_ALIGN_TOP_MID, 0, 140);
 
-    lv_obj_t *arc = lv_arc_create(ui_main_screen);
-    lv_obj_set_size(arc, 466, 466);
-    lv_arc_set_bg_angles(arc, 0, 180);
-    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_range(arc, 100, 400);
-    lv_arc_set_value(arc, (int)(set_temperature * 10));
-    lv_obj_add_event_cb(arc, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_set_style_arc_width(arc, 25, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(arc, 25, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
-    lv_obj_set_style_arc_color(arc, lv_color_make(50, 50, 50), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(arc, 10, LV_PART_KNOB);
-    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(arc, LV_OBJ_FLAG_ADV_HITTEST);
+    arc_main = lv_arc_create(ui_main_screen);
+    lv_obj_set_size(arc_main, 466, 466);
+    lv_arc_set_bg_angles(arc_main, 0, 180);
+    lv_obj_align(arc_main, LV_ALIGN_CENTER, 0, 0);
+    lv_arc_set_range(arc_main, 100, 400);
+    lv_arc_set_value(arc_main, temp_to_arc_value(set_temperature * 10.0f));
+    lv_obj_add_event_cb(arc_main, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_set_style_arc_width(arc_main, 25, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_main, 25, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_main, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_main, lv_color_make(50, 50, 50), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(arc_main, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc_main, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc_main, 10, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_main, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(arc_main, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(arc_main, LV_OBJ_FLAG_ADV_HITTEST);
 
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 0);
     update_set_temp_label();
-    update_arc_color(arc, set_temperature);
+    update_arc_color(arc_main, set_temperature);
 }

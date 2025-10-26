@@ -1,11 +1,7 @@
 #include <stdio.h>
-#include <stdint.h>
-#include <time.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "pico/stdio_usb.h"
-#include "pico/time.h"   // absolute_time_t, repeating_timer
-#include "hardware/gpio.h"
-
 #include "lvgl.h"
 #include "bme280_port.h"
 #include "../lv_port/lv_port_disp.h"
@@ -14,23 +10,26 @@
 #include "bsp_pcf85063.h"
 #include "lvgl_ui/screen/main_screen.h"
 
-#ifndef ENABLE_WIFI
-#define ENABLE_WIFI 1
+// === WIFI / LWIP (RM2: CYW43439)
+#include "pico/cyw43_arch.h"
+
+// lwIP – wariant bez BSD-socketów: używamy API netconn
+#include "lwip/netif.h"
+#include "lwip/ip4_addr.h"
+#include "lwip/ip_addr.h"
+#include "lwip/api.h"       // netconn_*
+#include "lwip/inet.h"      // ipaddr_aton (opcjonalnie)
+#include "lwip/netbuf.h"    // netbuf_* (netbuf_data, netbuf_next, netbuf_delete)
+
+#ifndef LWIP_NETCONN
+#  error "LWIP_NETCONN nie jest zdefiniowane - sprawdź konfigurację CMake (NO_SYS vs SYS)."
+#elif LWIP_NETCONN==0
+#  error "LWIP_NETCONN==0 - api netconn wyłączone (masz NO_SYS). Zmień architekturę na threadsafe_background."
 #endif
 
+// Włącz/wyłącz prostego klienta HTTP
 #ifndef ENABLE_HTTP_CLIENT
-#define ENABLE_HTTP_CLIENT 0
-#endif
-
-#if ENABLE_WIFI
-  #include "pico/cyw43_arch.h"
-  #include "lwip/netif.h"
-  #include "lwip/ip4_addr.h"
-  #if ENABLE_HTTP_CLIENT
-    #include "lwip/sockets.h"
-    #include "lwip/inet.h"
-    #include "lwip/dns.h"
-  #endif
+#define ENABLE_HTTP_CLIENT 1
 #endif
 
 #define LVGL_TICK_MS 5
@@ -44,50 +43,45 @@
 #define WIFI_PASS "Pawianywchodzanasciany"
 #endif
 
-#ifndef HEATBEAT_API_BASE
-#define HEATBEAT_API_BASE "http://192.168.55.120:8000"
+// Backend – używamy IP literalnego (bez DNS)
+#ifndef HEATBEAT_API_HOST
+#define HEATBEAT_API_HOST "192.168.55.120"
 #endif
-
-// LED do diagnostyki (na Pico W/2W pod cyw43, ale mamy też GPIO25)
-#ifndef BOOT_DIAG_LED
-#define BOOT_DIAG_LED 25
+#ifndef HEATBEAT_API_PORT
+#define HEATBEAT_API_PORT 8000
 #endif
 
 // LVGL tick timer
-static bool tick_cb(struct repeating_timer *t) {
-    (void)t;
-    lv_tick_inc(LVGL_TICK_MS);
-    return true;
-}
+static bool tick_cb(struct repeating_timer *t) { lv_tick_inc(LVGL_TICK_MS); return true; }
 
-// Print free RAM (przybliżenie)
+// Print free RAM (RP2040-specific)
 extern char __StackLimit, __bss_end__;
 static void print_free_ram(const char* msg) {
     uint32_t free_ram = (uint32_t)&__StackLimit - (uint32_t)&__bss_end__;
     printf("[RAM] %s: Wolna RAM: %lu bajtów\n", msg, (unsigned long)free_ram);
 }
 
-#if ENABLE_WIFI
 static void print_ip4(const ip4_addr_t* ip) {
     printf("%u.%u.%u.%u", ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
 }
 
+/* Pomocniczo: aktywny interfejs (zwykle jedyny) */
 static inline struct netif* get_nif(void) {
     return netif_default ? netif_default : netif_list;
 }
 
 static int try_wifi_auth(uint32_t auth)
 {
-    printf("[WiFi] próba połączenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
+    printf("WiFi: próba połączenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
     int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth, 20000);
     if (rc) {
-        printf("[WiFi] NIE połączono (rc=%d)\n", rc);
+        printf("WiFi: NIE połączono (rc=%d)\n", rc);
         return rc;
     }
 
     struct netif* nif = get_nif();
     if (!nif || !netif_is_up(nif)) {
-        printf("[WiFi] interfejs nie jest UP\n");
+        printf("WiFi: interfejs nie jest UP\n");
         return -1;
     }
     printf("[WiFi] Połączono z \"%s\"  IP:", WIFI_SSID);
@@ -102,10 +96,9 @@ static int try_wifi_auth(uint32_t auth)
 }
 
 static bool wifi_connect_and_log(void) {
-    printf("[BOOT] Inicjalizacja CYW43...\n");
-    // Jeśli to tu wisi: najczęściej złe piny / zły port. Na Pico W/2W nie nadpisuj pinów!
+    printf("➡️ Inicjalizacja układu CYW43 (RM2)...\n");
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND)) {
-        printf("[BOOT] cyw43_arch_init_with_country() FAILED\n");
+        printf("❌ cyw43_arch_init_with_country() failed\n");
         return false;
     }
     cyw43_arch_enable_sta_mode();
@@ -120,10 +113,11 @@ static bool wifi_connect_and_log(void) {
         if (try_wifi_auth(try_auths[i]) == 0) return true;
         sleep_ms(500);
     }
-    printf("[WiFi] Nie udało się połączyć z \"%s\" – sprawdź hasło/SSID.\n", WIFI_SSID);
+    printf("❌ Nie udało się połączyć z \"%s\" – sprawdź hasło/SSID.\n", WIFI_SSID);
     return false;
 }
 
+/* Periodyczny status Wi-Fi do terminala */
 static void wifi_status_print_once(void) {
     int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
     const char* s = "UNK";
@@ -150,49 +144,120 @@ static void wifi_status_print_once(void) {
     }
     printf("\n");
 }
-#else
-static inline bool wifi_connect_and_log(void) { return false; }
-static inline void wifi_status_print_once(void) {}
-#endif // ENABLE_WIFI
+
+#if ENABLE_HTTP_CLIENT
+/* ===== Prosty klient HTTP na netconn (bez BSD socketów) ===== */
+
+static struct netconn* netconn_connect_host(const char* host_ip, uint16_t port)
+/* Zwraca wskaźnik do netconn lub NULL przy błędzie. */
+{
+    ip_addr_t ip;
+    if (!ipaddr_aton(host_ip, &ip)) {
+        printf("[HTTP] ipaddr_aton() fail dla '%s'\n", host_ip);
+        return NULL;
+    }
+
+    struct netconn* nc = netconn_new(NETCONN_TCP);
+    if (!nc) { printf("[HTTP] netconn_new() fail\n"); return NULL; }
+
+    err_t err = netconn_connect(nc, &ip, port);
+    if (err != ERR_OK) {
+        printf("[HTTP] netconn_connect() err=%d\n", (int)err);
+        netconn_delete(nc);
+        return NULL;
+    }
+    return nc;
+}
+
+static int http_exchange_auth(
+    struct netconn* nc,
+    const char* method,           // "GET" lub "POST"
+    const char* path,             // np. "/device/1/settings"
+    const char* host_header,      // np. "192.168.55.120:8000"
+    const char* extra_headers,    // np. "Authorization: Bearer xxx\r\n"
+    const char* body,             // body dla POST (może być NULL)
+    char* out_buf, size_t out_sz  // wyjściowy bufor na body odpowiedzi
+)
+/* Wysyła request i kopiuje BODY odpowiedzi do out_buf. Zwraca liczbę bajtów body, lub -1. */
+{
+    char req[768];
+    int n = snprintf(req, sizeof(req),
+        "%s %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Connection: close\r\n"
+        "%s"
+        "%s"
+        "\r\n"
+        "%s",
+        method, path, host_header,
+        extra_headers ? extra_headers : "",
+        body ? "Content-Type: application/json\r\n" : "",
+        body ? body : ""
+    );
+    if (n <= 0 || (size_t)n >= sizeof(req)) {
+        printf("[HTTP] req overflow\n");
+        return -1;
+    }
+
+    err_t err = netconn_write(nc, req, (size_t)n, NETCONN_COPY);
+    if (err != ERR_OK) {
+        printf("[HTTP] netconn_write() err=%d\n", (int)err);
+        return -1;
+    }
+
+    // Odbiór całej odpowiedzi do tymczasowego bufora
+    size_t used = 0;
+    struct netbuf* inbuf;
+    while ((err = netconn_recv(nc, &inbuf)) == ERR_OK) {
+        void* data;
+        u16_t len;
+        do {
+            netbuf_data(inbuf, &data, &len);
+            size_t take = (used + len <= out_sz) ? len : (out_sz - used);
+            if (take) {
+                memcpy(out_buf + used, data, take);
+                used += take;
+            }
+        } while (netbuf_next(inbuf) >= 0);
+        netbuf_delete(inbuf);
+    }
+
+    if (used == 0) return -1;
+
+    // Znajdź początek BODY po podwójnym CRLF
+    const char* hdr_end = NULL;
+    for (size_t i = 3; i < used; ++i) {
+        if (out_buf[i-3]=='\r' && out_buf[i-2]=='\n' && out_buf[i-1]=='\r' && out_buf[i]=='\n') {
+            hdr_end = out_buf + i + 1;
+            break;
+        }
+    }
+    if (!hdr_end) return -1;
+
+    size_t body_bytes = (out_buf + used) - hdr_end;
+    memmove(out_buf, hdr_end, body_bytes);
+    if (body_bytes < out_sz) out_buf[body_bytes] = '\0';
+    return (int)body_bytes;
+}
+#endif // ENABLE_HTTP_CLIENT
 
 int main(void) {
-    // Prosty „blink” diagnostyczny zanim wstanie USB/Wi-Fi
-    gpio_init(BOOT_DIAG_LED);
-    gpio_set_dir(BOOT_DIAG_LED, GPIO_OUT);
-    for (int i=0;i<3;i++){ gpio_put(BOOT_DIAG_LED,1); sleep_ms(80); gpio_put(BOOT_DIAG_LED,0); sleep_ms(80); }
-
     stdio_usb_init();
 
-    absolute_time_t t_limit = make_timeout_time_ms(3000);
+    // Dodatkowe 10 s na podłączenie PuTTY
+    absolute_time_t t_limit = make_timeout_time_ms(10000);
     while (!stdio_usb_connected() && absolute_time_diff_us(get_absolute_time(), t_limit) > 0) {
         sleep_ms(50);
     }
 
-    printf("\r\n=== HeatBeat-Pico start ===\r\n");
+    printf("\r\n--- HeatBeat-Pico start! ---\r\n");
     print_free_ram("Boot");
 
-    // --- Wi-Fi: nie pozwól, aby boot umarł, jeśli coś pójdzie źle.
-    bool wifi_ok = false;
-#if ENABLE_WIFI
-    {
-        absolute_time_t wifi_deadline = make_timeout_time_ms(5000);
-        printf("[BOOT] Start Wi-Fi init...\n");
-        // próbujemy aż 5 s; jeśli nie – przechodzimy dalej bez Wi-Fi
-        while (absolute_time_diff_us(get_absolute_time(), wifi_deadline) > 0) {
-            wifi_ok = wifi_connect_and_log();
-            if (wifi_ok) break;
-            sleep_ms(250);
-        }
-        if (!wifi_ok) {
-            printf("[BOOT] Wi-Fi SAFE-MODE: UI rusza bez sieci.\n");
-        }
-    }
-#else
+    // === WIFI: połącz i zaloguj IP
+    bool wifi_ok = wifi_connect_and_log();
     (void)wifi_ok;
-#endif
 
     // Inicjalizacja UI
-    printf("[BOOT] Init I2C/RTC/LVGL...\n");
     bsp_i2c_init();
     bsp_pcf85063_init();
 
@@ -208,37 +273,35 @@ int main(void) {
     static struct repeating_timer t;
     add_repeating_timer_ms(LVGL_TICK_MS, tick_cb, NULL, &t);
 
+    // Timery
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
-    uint32_t last_bme_print = last_read;
+    uint32_t last_bme_print = last_read;         // log BME -> co 10 s
+    uint32_t last_wifi_status_print = last_read; // periodyczny status Wi-Fi
 
-#if ENABLE_WIFI
-    uint32_t last_wifi_status_print = last_read;
+    // Do wykrywania zmian
     int last_status = -999;
     uint32_t last_ip_raw = 0;
-#endif
 
     struct tm now_tm;
     struct bme280_data bme_data;
-    float target_temp_cache = 0.0f; (void)target_temp_cache;
 
-    printf("[BOOT] Main loop.\n");
     while (true) {
         lv_timer_handler();
         sleep_ms(LVGL_TICK_MS);
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
 
+        // Zegar na ekranie
         if (now - last_time > 1000) {
             bsp_pcf85063_get_time(&now_tm);
             char buf[32];
             snprintf(buf, sizeof(buf), "%02d:%02d:%02d", now_tm.tm_hour, now_tm.tm_min, now_tm.tm_sec);
             if (label_time) lv_label_set_text(label_time, buf);
             last_time = now;
-            // mały heartbeat na LED co sekundę
-            gpio_put(BOOT_DIAG_LED, (now/1000) & 1);
         }
 
+        // BME280: odczyt co ~2 s, log do terminala co 10 s
         if (now - last_read > 2000) {
             if (bme280_read_data(&bme_data) == 0) {
                 extern float current_temp;
@@ -259,8 +322,8 @@ int main(void) {
             last_read = now;
         }
 
-#if ENABLE_WIFI
-        if (wifi_ok && (now - last_wifi_status_print > 10000)) {
+        // ——— Wi-Fi: periodyczny status
+        if (now - last_wifi_status_print > 10000) { // co 10 s
             int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
             struct netif* nif = get_nif();
             uint32_t ip_raw = (nif && netif_is_up(nif)) ? netif_ip4_addr(nif)->addr : 0;
@@ -274,6 +337,28 @@ int main(void) {
             }
             last_wifi_status_print = now;
         }
+
+#if ENABLE_HTTP_CLIENT
+        // PRZYKŁAD: jednorazowy GET co 30 s (zakomentowane, żeby nie zasypywać serwera)
+        /*
+        if ((now % 30000u) < LVGL_TICK_MS) {
+            struct netconn* nc = netconn_connect_host(HEATBEAT_API_HOST, HEATBEAT_API_PORT);
+            if (nc) {
+                char body[600];
+                int got = http_exchange_auth(
+                    nc, "GET", "/device/1/settings",
+                    HEATBEAT_API_HOST ":8000",
+                    NULL, NULL, body, sizeof(body)-1
+                );
+                netconn_close(nc);
+                netconn_delete(nc);
+                if (got > 0) {
+                    body[got] = 0;
+                    printf("[HTTP] settings: %s\n", body);
+                }
+            }
+        }
+        */
 #endif
     }
 }
