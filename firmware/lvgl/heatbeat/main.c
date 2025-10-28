@@ -83,11 +83,18 @@ static int try_wifi_auth(uint32_t auth)
 
 static bool wifi_connect_and_log(void) {
     printf("[BOOT] Inicjalizacja CYW43...\n");
+    
+    // ✅ DODAJ: log przed inicjalizacją
+    printf("[DEBUG] WIFI_SSID=\"%s\", WIFI_PASS length=%d\n", WIFI_SSID, (int)strlen(WIFI_PASS));
+    
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND)) {
         printf("❌ cyw43_arch_init_with_country() failed\n");
         return false;
     }
+    
+    printf("[DEBUG] cyw43_arch_init OK\n");
     cyw43_arch_enable_sta_mode();
+    printf("[DEBUG] enable_sta_mode OK\n");
 
     const uint32_t try_auths[] = {
         CYW43_AUTH_WPA2_AES_PSK,
@@ -95,10 +102,18 @@ static bool wifi_connect_and_log(void) {
         CYW43_AUTH_WPA_TKIP_PSK,
         CYW43_AUTH_OPEN
     };
+    
     for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) {
-        if (try_wifi_auth(try_auths[i]) == 0) return true;
-        sleep_ms(500);
+        printf("[DEBUG] Próba %d/%d: auth=0x%08lx\n", (int)i+1, (int)(sizeof(try_auths)/sizeof(try_auths[0])), (unsigned long)try_auths[i]);
+        
+        if (try_wifi_auth(try_auths[i]) == 0) {
+            printf("[DEBUG] ✅ Połączono z auth=0x%08lx\n", (unsigned long)try_auths[i]);
+            return true;
+        }
+        
+        sleep_ms(1000);  // ✅ Zwiększ opóźnienie do 1s (z 500ms)
     }
+    
     printf("❌ Nie udało się połączyć z \"%s\" – sprawdź hasło/SSID.\n", WIFI_SSID);
     return false;
 }

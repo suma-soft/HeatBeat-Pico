@@ -36,7 +36,7 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_poll  # ✅ NO_SYS (poll)
+    pico_cyw43_arch_lwip_poll
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
