@@ -13,18 +13,9 @@
 // === WIFI / LWIP (RM2: CYW43439)
 #include "pico/cyw43_arch.h"
 
-// lwIP – tylko podstawowe (bez api.h, netbuf.h)
+// lwIP – tylko podstawowe (bez netconn)
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
-
-// ❌ USUŃ TE LINIE - wymagają lwIP SYS (arch/sys_arch.h):
-// #include "lwip/ip_addr.h"
-// #include "lwip/api.h"       // ❌ Wymaga SYS
-// #include "lwip/inet.h"
-// #include "lwip/netbuf.h"    // ❌ Wymaga SYS
-
-// ✅ SDK 2.1.0 ARM nie wspiera lwIP SYS - wyłącz HTTP client
-#define ENABLE_HTTP_CLIENT 0
 
 #define LVGL_TICK_MS 5
 #define DISP_HOR_RES 466
@@ -37,10 +28,8 @@
 #define WIFI_PASS "Pawianywchodzanasciany"
 #endif
 
-// LVGL tick timer
 static bool tick_cb(struct repeating_timer *t) { lv_tick_inc(LVGL_TICK_MS); return true; }
 
-// Print free RAM (RP2350-specific)
 extern char __StackLimit, __bss_end__;
 static void print_free_ram(const char* msg) {
     uint32_t free_ram = (uint32_t)&__StackLimit - (uint32_t)&__bss_end__;
@@ -51,7 +40,6 @@ static void print_ip4(const ip4_addr_t* ip) {
     printf("%u.%u.%u.%u", ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
 }
 
-/* Pomocniczo: aktywny interfejs (zwykle jedyny) */
 static inline struct netif* get_nif(void) {
     return netif_default ? netif_default : netif_list;
 }
@@ -83,18 +71,11 @@ static int try_wifi_auth(uint32_t auth)
 
 static bool wifi_connect_and_log(void) {
     printf("[BOOT] Inicjalizacja CYW43...\n");
-    
-    // ✅ DODAJ: log przed inicjalizacją
-    printf("[DEBUG] WIFI_SSID=\"%s\", WIFI_PASS length=%d\n", WIFI_SSID, (int)strlen(WIFI_PASS));
-    
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND)) {
         printf("❌ cyw43_arch_init_with_country() failed\n");
         return false;
     }
-    
-    printf("[DEBUG] cyw43_arch_init OK\n");
     cyw43_arch_enable_sta_mode();
-    printf("[DEBUG] enable_sta_mode OK\n");
 
     const uint32_t try_auths[] = {
         CYW43_AUTH_WPA2_AES_PSK,
@@ -102,23 +83,14 @@ static bool wifi_connect_and_log(void) {
         CYW43_AUTH_WPA_TKIP_PSK,
         CYW43_AUTH_OPEN
     };
-    
     for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) {
-        printf("[DEBUG] Próba %d/%d: auth=0x%08lx\n", (int)i+1, (int)(sizeof(try_auths)/sizeof(try_auths[0])), (unsigned long)try_auths[i]);
-        
-        if (try_wifi_auth(try_auths[i]) == 0) {
-            printf("[DEBUG] ✅ Połączono z auth=0x%08lx\n", (unsigned long)try_auths[i]);
-            return true;
-        }
-        
-        sleep_ms(1000);  // ✅ Zwiększ opóźnienie do 1s (z 500ms)
+        if (try_wifi_auth(try_auths[i]) == 0) return true;
+        sleep_ms(1000);
     }
-    
     printf("❌ Nie udało się połączyć z \"%s\" – sprawdź hasło/SSID.\n", WIFI_SSID);
     return false;
 }
 
-/* Periodyczny status Wi-Fi do terminala */
 static void wifi_status_print_once(void) {
     int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
     const char* s = "UNK";
@@ -149,7 +121,6 @@ static void wifi_status_print_once(void) {
 int main(void) {
     stdio_usb_init();
 
-    // Dodatkowe 10 s na podłączenie PuTTY
     absolute_time_t t_limit = make_timeout_time_ms(10000);
     while (!stdio_usb_connected() && absolute_time_diff_us(get_absolute_time(), t_limit) > 0) {
         sleep_ms(50);
@@ -158,12 +129,10 @@ int main(void) {
     printf("\r\n=== HeatBeat-Pico start ===\r\n");
     print_free_ram("Boot");
 
-    // === WIFI: połącz i zaloguj IP
     printf("[BOOT] Start Wi-Fi init...\n");
     bool wifi_ok = wifi_connect_and_log();
     (void)wifi_ok;
 
-    // Inicjalizacja UI
     printf("[BOOT] Init I2C/RTC/LVGL...\n");
     bsp_i2c_init();
     bsp_pcf85063_init();
@@ -182,13 +151,11 @@ int main(void) {
 
     printf("[BOOT] Main loop.\n");
 
-    // Timery
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
     uint32_t last_bme_print = last_read;
     uint32_t last_wifi_status_print = last_read;
 
-    // Do wykrywania zmian
     int last_status = -999;
     uint32_t last_ip_raw = 0;
 
@@ -196,14 +163,13 @@ int main(void) {
     struct bme280_data bme_data;
 
     while (true) {
-        cyw43_arch_poll();  // ✅ KLUCZOWE dla NO_SYS (poll) - obsługa WiFi
+        cyw43_arch_poll();  // ✅ KLUCZOWE DLA NO_SYS!
         
         lv_timer_handler();
         sleep_ms(LVGL_TICK_MS);
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
 
-        // Zegar na ekranie
         if (now - last_time > 1000) {
             bsp_pcf85063_get_time(&now_tm);
             char buf[32];
@@ -212,7 +178,6 @@ int main(void) {
             last_time = now;
         }
 
-        // BME280: odczyt co ~2 s, log do terminala co 10 s
         if (now - last_read > 2000) {
             if (bme280_read_data(&bme_data) == 0) {
                 extern float current_temp;
@@ -233,8 +198,7 @@ int main(void) {
             last_read = now;
         }
 
-        // ——— Wi-Fi: periodyczny status
-        if (now - last_wifi_status_print > 10000) { // co 10 s
+        if (now - last_wifi_status_print > 10000) {
             int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
             struct netif* nif = get_nif();
             uint32_t ip_raw = (nif && netif_is_up(nif)) ? netif_ip4_addr(nif)->addr : 0;

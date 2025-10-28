@@ -27,6 +27,10 @@ target_compile_definitions(heatbeat PRIVATE
     PICO_CYW43_SUPPORTED=1
     CYW43_LWIP=1
     PICO_BLUETOOTH=0
+    CYW43_WL_GPIO_POWER=23
+    CYW43_WL_GPIO_CLK=29
+    CYW43_WL_GPIO_CMD=25
+    CYW43_WL_GPIO_DAT0=24
 )
 
 target_link_libraries(heatbeat
@@ -39,6 +43,8 @@ target_link_libraries(heatbeat
     pico_cyw43_arch_lwip_poll
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
+
+
 
 pico_enable_stdio_usb(heatbeat 1)
 pico_enable_stdio_uart(heatbeat 0)
