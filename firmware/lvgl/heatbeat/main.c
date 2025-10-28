@@ -21,10 +21,11 @@
 #include "lwip/inet.h"      // ipaddr_aton
 #include "lwip/netbuf.h"    // netbuf_*
 
-#ifndef LWIP_NETCONN
-#  error "LWIP_NETCONN nie jest zdefiniowane - sprawdź konfigurację CMake (NO_SYS vs SYS)."
-#elif LWIP_NETCONN==0
-#  error "LWIP_NETCONN==0 - api netconn wyłączone (masz NO_SYS). Zmień architekturę na threadsafe_background."
+// Sprawdź, czy lwIP netconn jest dostępne (SDK 2.1.0 ARM nie wspiera SYS!)
+#if !defined(LWIP_NETCONN) || LWIP_NETCONN==0
+#  warning "LWIP_NETCONN==0 - SDK 2.1.0 ARM nie wspiera lwIP SYS. HTTP client wyłączony."
+#  undef ENABLE_HTTP_CLIENT
+#  define ENABLE_HTTP_CLIENT 0
 #endif
 
 // Włącz/wyłącz prostego klienta HTTP
@@ -455,8 +456,10 @@ int main(void) {
     struct bme280_data bme_data;
 
     while (true) {
-        lv_timer_handler();
-        sleep_ms(LVGL_TICK_MS);
+    cyw43_arch_poll();  // ✅ KLUCZOWE dla NO_SYS (poll) - obsługa WiFi
+    
+    lv_timer_handler();
+    sleep_ms(LVGL_TICK_MS);
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
 

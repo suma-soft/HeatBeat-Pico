@@ -18,7 +18,7 @@ target_include_directories(heatbeat PUBLIC
 
 set(WIFI_SSID "KAMNET_8960" CACHE STRING "WiFi SSID")
 set(WIFI_PASS "Pawianywchodzanasciany" CACHE STRING "WiFi password")
-option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" ON)
+option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)  # ✅ Wyłącz HTTP (SDK nie wspiera SYS)
 set(HEATBEAT_API_HOST "192.168.55.120" CACHE STRING "Backend API host IP")
 set(HEATBEAT_API_PORT "8000" CACHE STRING "Backend API port")
 
@@ -31,9 +31,6 @@ target_compile_definitions(heatbeat PRIVATE
     PICO_CYW43_SUPPORTED=1
     CYW43_LWIP=1
     PICO_BLUETOOTH=0
-    # ✅ DODAJ TE LINIE - wymuś lwIP SYS + netconn API:
-    LWIP_NETCONN=1
-    NO_SYS=0
 )
 
 target_link_libraries(heatbeat
@@ -43,7 +40,7 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_threadsafe_background
+    pico_cyw43_arch_lwip_poll
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
