@@ -6,7 +6,7 @@ else()
 endif()
 set(PICO_CYW43_SUPPORTED 1)
 set(sdkVersion 2.1.1)
-set(toolchainVersion RISCV_RPI_2_0_0_5)
+set(toolchainVersion 13_2_Rel1)  # ✅ ZMIEŃ z RISCV_RPI_2_0_0_5 na ARM
 set(picotoolVersion 2.1.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
@@ -15,11 +15,11 @@ endif()
 # ====================================================================================
 cmake_minimum_required(VERSION 3.13)
 
-# ✅ KLUCZOWE: Ustaw PICO_PLATFORM PRZED include(pico_sdk_import.cmake)
-set(PICO_PLATFORM rp2350-riscv CACHE STRING "Pico platform")
+# ❌ USUŃ (wymusza RISC-V):
+# set(PICO_PLATFORM rp2350-riscv CACHE STRING "Pico platform")
+
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
-# Pull in SDK (must be before project)
 include(pico_sdk_import.cmake)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -33,7 +33,6 @@ if (PICO_SDK_VERSION_STRING VERSION_LESS "2.1.0")
     message(FATAL_ERROR "Raspberry Pi Pico SDK version 2.1.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
 endif()
 
-# ✅ KLUCZOWE: pico_sdk_init() MUSI być PO project()
 pico_sdk_init()
 
 add_compile_options(

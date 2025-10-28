@@ -17,7 +17,7 @@ target_include_directories(heatbeat PUBLIC
 
 set(WIFI_SSID "KAMNET_8960" CACHE STRING "WiFi SSID")
 set(WIFI_PASS "Pawianywchodzanasciany" CACHE STRING "WiFi password")
-option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)  # ✅ Wyłącz na razie
+option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" ON)
 set(HEATBEAT_API_HOST "192.168.55.120" CACHE STRING "Backend API host IP")
 set(HEATBEAT_API_PORT "8000" CACHE STRING "Backend API port")
 
@@ -39,7 +39,7 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_poll
+    pico_cyw43_arch_lwip_threadsafe_background
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
