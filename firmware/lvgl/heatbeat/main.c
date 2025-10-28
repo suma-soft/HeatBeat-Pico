@@ -13,14 +13,9 @@
 // === WIFI / LWIP (RM2: CYW43439)
 #include "pico/cyw43_arch.h"
 
-// lwIP – podstawowe typy (NO_SYS, bez netconn)
+// lwIP – NO_SYS (poll mode, bez wątków)
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
-
-// ❌ USUNIĘTO: #include "lwip/api.h" (netconn - wymaga SYS)
-// ❌ USUNIĘTO: sprawdzanie LWIP_NETCONN
-
-#define ENABLE_HTTP_CLIENT 0  // ❌ Wyłączone (netconn nie działa z NO_SYS)
 
 #define LVGL_TICK_MS 5
 #define DISP_HOR_RES 466
@@ -33,7 +28,10 @@
 #define WIFI_PASS "Pawianywchodzanasciany"
 #endif
 
-static bool tick_cb(struct repeating_timer *t) { lv_tick_inc(LVGL_TICK_MS); return true; }
+static bool tick_cb(struct repeating_timer *t) { 
+    lv_tick_inc(LVGL_TICK_MS); 
+    return true; 
+}
 
 extern char __StackLimit, __bss_end__;
 static void print_free_ram(const char* msg) {
@@ -76,11 +74,16 @@ static int try_wifi_auth(uint32_t auth)
 
 static bool wifi_connect_and_log(void) {
     printf("➡️ Inicjalizacja układu CYW43 (RM2)...\n");
+    printf("[DEBUG] Wywołuję cyw43_arch_init_with_country()...\n");
+    
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND)) {
         printf("❌ cyw43_arch_init_with_country() failed\n");
         return false;
     }
+    
+    printf("✅ cyw43_arch_init OK\n");
     cyw43_arch_enable_sta_mode();
+    printf("✅ enable_sta_mode OK\n");
 
     const uint32_t try_auths[] = {
         CYW43_AUTH_WPA2_AES_PSK,
@@ -123,34 +126,48 @@ static void wifi_status_print_once(void) {
     printf("\n");
 }
 
+// ✅ Callback dla UI
+void heatbeat_on_target_temp_changed(float new_target_temp) {
+    printf("[UI] Zmieniono temperaturę docelową na: %.1f°C\n", new_target_temp);
+}
+
 int main(void) {
     stdio_usb_init();
-
-    absolute_time_t t_limit = make_timeout_time_ms(10000);
-    while (!stdio_usb_connected() && absolute_time_diff_us(get_absolute_time(), t_limit) > 0) {
-        sleep_ms(50);
-    }
-
-    printf("\r\n--- HeatBeat-Pico start! ---\r\n");
+    sleep_ms(2000);
+    
+    printf("\r\n\r\n");
+    printf("===================================\n");
+    printf("  HeatBeat-Pico v1.0 (RISC-V)\n");
+    printf("===================================\n");
+    printf("Build: %s %s\n", __DATE__, __TIME__);
     print_free_ram("Boot");
 
+    printf("\n[1/6] Inicjalizacja WiFi...\n");
     bool wifi_ok = wifi_connect_and_log();
-    (void)wifi_ok;
+    if (!wifi_ok) {
+        printf("⚠️  WiFi nie podłączono - kontynuuję bez sieci\n");
+    }
 
+    printf("[2/6] Inicjalizacja I2C...\n");
     bsp_i2c_init();
     bsp_pcf85063_init();
 
+    printf("[3/6] Inicjalizacja LVGL...\n");
     lv_init();
     lv_port_disp_init(DISP_HOR_RES, DISP_VER_RES, 0, false);
     lv_port_indev_init(DISP_HOR_RES, DISP_VER_RES, 0);
 
+    printf("[4/6] Inicjalizacja BME280...\n");
     bme280_init_default();
 
+    printf("[5/6] Ładowanie interfejsu...\n");
     main_screen_init();
     lv_scr_load(ui_main_screen);
 
     static struct repeating_timer t;
     add_repeating_timer_ms(LVGL_TICK_MS, tick_cb, NULL, &t);
+
+    printf("[6/6] ✅ System gotowy!\n\n");
 
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
@@ -164,8 +181,7 @@ int main(void) {
     struct bme280_data bme_data;
 
     while (true) {
-        // ✅ KLUCZOWE: Obsłuż lwIP w trybie poll
-        cyw43_arch_poll();
+        cyw43_arch_poll();  // ✅ KLUCZOWE dla NO_SYS
         
         lv_timer_handler();
         sleep_ms(LVGL_TICK_MS);
@@ -209,11 +225,8 @@ int main(void) {
                 wifi_status_print_once();
                 last_status = st;
                 last_ip_raw = ip_raw;
-            } else {
-                wifi_status_print_once();
             }
             last_wifi_status_print = now;
-   
         }
     }
 }

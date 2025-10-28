@@ -39,7 +39,7 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_poll  # ✅ POLL (jedyne co działa na RISC-V)
+    pico_cyw43_arch_lwip_poll
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
