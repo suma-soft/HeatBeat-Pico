@@ -8,7 +8,7 @@ add_executable(heatbeat
 )
 
 target_include_directories(heatbeat PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}  # ✅ WAŻNE - tu jest lwipopts.h
     ${CMAKE_CURRENT_SOURCE_DIR}/bme280
     ${CMAKE_CURRENT_SOURCE_DIR}/font
     ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_ui
@@ -18,16 +18,12 @@ target_include_directories(heatbeat PUBLIC
 
 set(WIFI_SSID "KAMNET_8960" CACHE STRING "WiFi SSID")
 set(WIFI_PASS "Pawianywchodzanasciany" CACHE STRING "WiFi password")
-option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)  # ✅ Wyłącz HTTP (SDK nie wspiera SYS)
-set(HEATBEAT_API_HOST "192.168.55.120" CACHE STRING "Backend API host IP")
-set(HEATBEAT_API_PORT "8000" CACHE STRING "Backend API port")
+option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)  # ✅ Wyłącz (brak netconn API)
 
 target_compile_definitions(heatbeat PRIVATE
     WIFI_SSID="${WIFI_SSID}"
     WIFI_PASS="${WIFI_PASS}"
-    ENABLE_HTTP_CLIENT=$<IF:$<BOOL:${ENABLE_HTTP_CLIENT}>,1,0>
-    HEATBEAT_API_HOST="${HEATBEAT_API_HOST}"
-    HEATBEAT_API_PORT=${HEATBEAT_API_PORT}
+    ENABLE_HTTP_CLIENT=0  # ✅ Wyłącz HTTP client
     PICO_CYW43_SUPPORTED=1
     CYW43_LWIP=1
     PICO_BLUETOOTH=0
@@ -40,7 +36,7 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_poll
+    pico_cyw43_arch_lwip_poll  # ✅ NO_SYS (poll)
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
