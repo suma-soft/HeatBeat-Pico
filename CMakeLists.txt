@@ -6,7 +6,7 @@ else()
 endif()
 set(PICO_CYW43_SUPPORTED 1)
 set(sdkVersion 2.1.1)
-set(toolchainVersion 13_2_Rel1)  # ✅ ZMIEŃ z RISCV_RPI_2_0_0_5 na ARM
+set(toolchainVersion 14_2_Rel1)  # ✅ Zmień na 14.2 (masz w .vscode/settings.json)
 set(picotoolVersion 2.1.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
@@ -15,14 +15,18 @@ endif()
 # ====================================================================================
 cmake_minimum_required(VERSION 3.13)
 
-# ❌ USUŃ (wymusza RISC-V):
-# set(PICO_PLATFORM rp2350-riscv CACHE STRING "Pico platform")
-
+# ✅ WYMUŚ ARM (usuń RISC-V)
+set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Pico platform" FORCE)
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 include(pico_sdk_import.cmake)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Set the toolchain for ARM cross-compilation
+set(CMAKE_C_COMPILER arm-none-eabi-gcc)
+set(CMAKE_CXX_COMPILER arm-none-eabi-g++)
+set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
 
 project(HeatBeat-Pico C CXX ASM)
 

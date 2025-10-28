@@ -126,9 +126,136 @@ static void wifi_status_print_once(void) {
     printf("\n");
 }
 
-// ✅ Callback dla UI
+// ✅ Callback dla UI (zmiana temperatury docelowej)
 void heatbeat_on_target_temp_changed(float new_target_temp) {
     printf("[UI] Zmieniono temperaturę docelową na: %.1f°C\n", new_target_temp);
+    
+#if ENABLE_HTTP_CLIENT
+/* ===== Prosty klient HTTP na netconn (bez BSD socketów) ===== */
+
+static struct netconn* netconn_connect_host(const char* host_ip, uint16_t port)
+{
+    ip_addr_t ip;
+    if (!ipaddr_aton(host_ip, &ip)) {
+        printf("[HTTP] ipaddr_aton() fail dla '%s'\n", host_ip);
+        return NULL;
+    }
+
+    struct netconn* nc = netconn_new(NETCONN_TCP);
+    if (!nc) { printf("[HTTP] netconn_new() fail\n"); return NULL; }
+
+    err_t err = netconn_connect(nc, &ip, port);
+    if (err != ERR_OK) {
+        printf("[HTTP] netconn_connect() err=%d\n", (int)err);
+        netconn_delete(nc);
+        return NULL;
+    }
+    return nc;
+}
+
+static int http_exchange_auth(
+    struct netconn* nc,
+    const char* method,
+    const char* path,
+    const char* host_header,
+    const char* extra_headers,
+    const char* body,
+    char* out_buf, size_t out_sz
+)
+{
+    char req[768];
+    int n = snprintf(req, sizeof(req),
+        "%s %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Connection: close\r\n"
+        "%s"
+        "%s"
+        "\r\n"
+        "%s",
+        method, path, host_header,
+        extra_headers ? extra_headers : "",
+        body ? "Content-Type: application/json\r\n" : "",
+        body ? body : ""
+    );
+    if (n <= 0 || (size_t)n >= sizeof(req)) {
+        printf("[HTTP] req overflow\n");
+        return -1;
+    }
+
+    err_t err = netconn_write(nc, req, (size_t)n, NETCONN_COPY);
+    if (err != ERR_OK) {
+        printf("[HTTP] netconn_write() err=%d\n", (int)err);
+        return -1;
+    }
+
+    size_t used = 0;
+    struct netbuf* inbuf;
+    while ((err = netconn_recv(nc, &inbuf)) == ERR_OK) {
+        void* data;
+        u16_t len;
+        do {
+            netbuf_data(inbuf, &data, &len);
+            size_t take = (used + len <= out_sz) ? len : (out_sz - used);
+            if (take) {
+                memcpy(out_buf + used, data, take);
+                used += take;
+            }
+        } while (netbuf_next(inbuf) >= 0);
+        netbuf_delete(inbuf);
+    }
+
+    if (used == 0) return -1;
+
+    const char* hdr_end = NULL;
+    for (size_t i = 3; i < used; ++i) {
+        if (out_buf[i-3]=='\r' && out_buf[i-2]=='\n' && out_buf[i-1]=='\r' && out_buf[i]=='\n') {
+            hdr_end = out_buf + i + 1;
+            break;
+        }
+    }
+    if (!hdr_end) return -1;
+
+    size_t body_bytes = (out_buf + used) - hdr_end;
+    memmove(out_buf, hdr_end, body_bytes);
+    if (body_bytes < out_sz) out_buf[body_bytes] = '\0';
+    return (int)body_bytes;
+}
+
+// ✅✅✅ DODAJ TU (PRZED KOŃCOWYM #endif): ✅✅✅
+void heatbeat_on_target_temp_changed(float new_target_temp) {
+    printf("[UI] Zmieniono temperaturę docelową na: %.1f°C\n", new_target_temp);
+    
+    // Wyślij POST do backendu
+    struct netconn* nc = netconn_connect_host(HEATBEAT_API_HOST, HEATBEAT_API_PORT);
+    if (nc) {
+        char body[128];
+        snprintf(body, sizeof(body), "{\"target_temp\":%.1f}", new_target_temp);
+        
+        char resp[256];
+        int got = http_exchange_auth(
+            nc, "POST", "/api/v1/device/1/target_temp",
+            HEATBEAT_API_HOST ":8000",
+            NULL, body, resp, sizeof(resp)
+        );
+        
+        netconn_close(nc);
+        netconn_delete(nc);
+        
+        if (got > 0) {
+            resp[got] = '\0';
+            printf("[HTTP] POST target_temp response: %s\n", resp);
+        } else {
+            printf("[HTTP] POST target_temp FAILED (got=%d)\n", got);
+        }
+    } else {
+        printf("[HTTP] Nie udało się połączyć z backendem %s:%d\n", 
+               HEATBEAT_API_HOST, HEATBEAT_API_PORT);
+    }
+}
+
+#endif // ENABLE_HTTP_CLIENT
+// ✅✅✅ KONIEC DODANIA ✅✅✅
+
 }
 
 int main(void) {
