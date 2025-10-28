@@ -1,3 +1,11 @@
 build
 !.vscode/*
 build/
+
+# Visual Studio artifacts (CMake generator)
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+.vs/
+CMakeSettings.json
