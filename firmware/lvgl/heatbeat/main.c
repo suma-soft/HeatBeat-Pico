@@ -10,6 +10,10 @@
 #include "bsp_pcf85063.h"
 #include "lvgl_ui/screen/main_screen.h"
 
+
+#ifndef PICO_CYW43_SUPPORTED
+#define PICO_CYW43_SUPPORTED 1
+#endif
 // === WIFI / LWIP (RM2: CYW43439)
 #include "pico/cyw43_arch.h"
 
@@ -79,7 +83,7 @@ static bool wifi_connect_and_log(void) {
 
     const uint32_t try_auths[] = {
         CYW43_AUTH_WPA2_AES_PSK,
-        CYW43_AUTH_WPA2_MIXED_PSK,
+        //CYW43_AUTH_WPA2_MIXED_PSK,
         CYW43_AUTH_WPA_TKIP_PSK,
         CYW43_AUTH_OPEN
     };
