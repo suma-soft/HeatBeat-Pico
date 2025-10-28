@@ -1,6 +1,8 @@
+extern void heatbeat_on_target_temp_changed(float new_target);
 #include "main_screen.h"
 #include <stdio.h>
 #include "lv_font_montserrat_28_pl.h"
+
 
 // Globalne zmienne używane w main.c
 float current_temp = 0;
@@ -91,6 +93,21 @@ void arc_event_cb(lv_event_t *e)
         update_arc_color(arc, set_temperature);
     }
 }
+
+static void slider_target_temp_event_cb(lv_event_t* e) {
+    lv_obj_t* slider = lv_event_get_target(e);
+    int32_t value = lv_slider_get_value(slider);
+    float new_target = (float)value;
+    
+    // Zaktualizuj label na ekranie
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1f°C", new_target);
+    lv_label_set_text(label_set_temp, buf);
+    
+    // Wyślij POST do backendu
+    heatbeat_on_target_temp_changed(new_target);
+}
+
 
 void main_screen_init(void)
 {

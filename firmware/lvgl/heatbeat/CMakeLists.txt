@@ -1,8 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
-
-project(heatbeat C)
-
-add_executable(${PROJECT_NAME}
+add_executable(heatbeat
     main.c
     bme280_port.c
     ../lv_port/lv_port_disp.c
@@ -11,7 +7,7 @@ add_executable(${PROJECT_NAME}
     font/lv_font_montserrat_28_pl.c
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(heatbeat PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/bme280
     ${CMAKE_CURRENT_SOURCE_DIR}/font
@@ -20,52 +16,40 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/net
 )
 
-# --- Konfiguracja użytkownika ---
 set(WIFI_SSID "KAMNET_8960" CACHE STRING "WiFi SSID")
 set(WIFI_PASS "Pawianywchodzanasciany" CACHE STRING "WiFi password")
-option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" OFF)
-option(ENABLE_WIFI "Enable WiFi (CYW43 + lwIP)" ON)
+option(ENABLE_HTTP_CLIENT "Enable tiny HTTP client" ON)
+set(HEATBEAT_API_HOST "192.168.55.120" CACHE STRING "Backend API host IP")
+set(HEATBEAT_API_PORT "8000" CACHE STRING "Backend API port")
 
-# Definicje kompilacji
-target_compile_definitions(${PROJECT_NAME} PRIVATE
+target_compile_definitions(heatbeat PRIVATE
     WIFI_SSID="${WIFI_SSID}"
     WIFI_PASS="${WIFI_PASS}"
     ENABLE_HTTP_CLIENT=$<IF:$<BOOL:${ENABLE_HTTP_CLIENT}>,1,0>
-    ENABLE_WIFI=$<IF:$<BOOL:${ENABLE_WIFI}>,1,0>
-
-    # Stos CYW43 + lwIP (arch = poll, bez RTOS)
+    HEATBEAT_API_HOST="${HEATBEAT_API_HOST}"
+    HEATBEAT_API_PORT=${HEATBEAT_API_PORT}
     PICO_CYW43_SUPPORTED=1
     CYW43_LWIP=1
-    PICO_CYW43_ARCH_POLL=1
     PICO_BLUETOOTH=0
-
-    # UWAGA: na Pico W / Pico 2 W NIE definiujemy własnych pinów CYW43_*
-    # SDK ma właściwy port i NVRAM. Własne makra potrafią zabić start.
+    # ✅ DODAJ TE LINIE - wymuś lwIP SYS + netconn API:
+    LWIP_NETCONN=1
+    NO_SYS=0
 )
 
-# Biblioteki – kolejność ma znaczenie
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(heatbeat
     pico_stdlib
     lvgl
     bsp
     lvgl_ui
     screen_objects
     bme280
-    pico_cyw43_arch_lwip_poll
-    pico_lwip_nosys
-    # HTTPS? odkomentuj:
-    # pico_lwip_mbedtls
-    # mbedtls
+    pico_cyw43_arch_lwip_threadsafe_background
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
-# STDIO
-pico_enable_stdio_usb(${PROJECT_NAME} 1)
-pico_enable_stdio_uart(${PROJECT_NAME} 0)
+pico_enable_stdio_usb(heatbeat 1)
+pico_enable_stdio_uart(heatbeat 0)
+pico_add_extra_outputs(heatbeat)
 
-# Artefakty (elf/bin/uf2)
-pico_add_extra_outputs(${PROJECT_NAME})
-
-# Podmoduły lokalne
 add_subdirectory(bme280)
 add_subdirectory(lvgl_ui)

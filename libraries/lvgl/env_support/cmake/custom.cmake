@@ -1,4 +1,6 @@
-cmake_policy(SET CMP0177 NEW)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30" AND POLICY CMP0177)
+    cmake_policy(SET CMP0177 NEW)
+endif()
 
 # Option to define LV_LVGL_H_INCLUDE_SIMPLE, default: ON
 option(LV_LVGL_H_INCLUDE_SIMPLE

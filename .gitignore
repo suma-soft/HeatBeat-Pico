@@ -9,3 +9,13 @@ build/
 *.sln
 .vs/
 CMakeSettings.json
+firmware/lvgl/heatbeat/lvgl_ui/cmake_install.cmake
+firmware/lvgl/heatbeat/lvgl_ui/CMakeFiles/generate.stamp
+firmware/lvgl/heatbeat/lvgl_ui/CMakeFiles/generate.stamp.depend
+firmware/lvgl/heatbeat/lvgl_ui/screen/cmake_install.cmake
+firmware/lvgl/heatbeat/lvgl_ui/screen/CMakeFiles/generate.stamp
+firmware/lvgl/heatbeat/lvgl_ui/screen/CMakeFiles/generate.stamp.depend
+libraries/lvgl/cmake_install.cmake
+libraries/lvgl/CMakeFiles/generate.stamp
+libraries/lvgl/CMakeFiles/generate.stamp.depend
+libraries/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/src/cmake_install.cmake
