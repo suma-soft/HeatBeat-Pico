@@ -7,6 +7,8 @@ add_executable(heatbeat
     ../lv_port/lv_port_indev.c
     ../lv_port/lv_port_fs.c
     font/lv_font_montserrat_28_pl.c
+    net/hb_http.c
+
 )
 
 # Nagłówki (tu m.in. lwipopts.h)
@@ -26,6 +28,9 @@ target_compile_definitions(heatbeat PRIVATE
     PICO_CYW43_SUPPORTED=1
     CYW43_LWIP=1
     PICO_BLUETOOTH=0
+    HB_DEFAULT_HOST="192.168.55.119"     # <── IP  komputera
+    HB_DEFAULT_PORT=8000
+    HB_DEFAULT_DEVICE_ID=1
 
     # Domyślne mapowanie Pico W / RM2 (SP/CE): WL_ON, DAT0, CMD/CS, CLK
     CYW43_WL_GPIO_POWER=23

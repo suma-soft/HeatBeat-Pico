@@ -2,9 +2,11 @@ extern void heatbeat_on_target_temp_changed(float new_target);
 #include "main_screen.h"
 #include <stdio.h>
 #include "lv_font_montserrat_28_pl.h"
+#include "lvgl.h"
 
-
-// Globalne zmienne używane w main.c
+// ─────────────────────────────
+// GLOBALNE DANE
+// ─────────────────────────────
 float current_temp = 0;
 int humidity = 0;
 float pressure = 0;
@@ -16,10 +18,14 @@ lv_obj_t *label_pres;
 lv_obj_t *label_temp;
 lv_obj_t *label_humi;
 lv_obj_t *label_target;
+lv_obj_t *arc_control;        // 🔹 referencja do łuku
 
 float set_temperature = 21.0f;
 static int target_temp = 22;
 
+// ─────────────────────────────
+// FUNKCJE POMOCNICZE
+// ─────────────────────────────
 void update_labels()
 {
     char buf[32];
@@ -44,6 +50,7 @@ void update_set_temp_label(void) {
     lv_label_set_text(label_set_temp, buf);
 }
 
+// Interpolacja kolorów dla łuku
 static lv_color_t interpolate_rgb(int r1, int g1, int b1, int r2, int g2, int b2, float ratio)
 {
     int r = r1 + (int)((r2 - r1) * ratio);
@@ -70,8 +77,9 @@ static lv_color_t interpolate_color(float temp)
 
 static void update_arc_color(lv_obj_t *arc, float temperature)
 {
-    lv_color_t color = interpolate_color(temperature);
+    if (!arc) return;
 
+    lv_color_t color = interpolate_color(temperature);
     lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
     lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
@@ -80,6 +88,9 @@ static void update_arc_color(lv_obj_t *arc, float temperature)
     lv_obj_set_style_arc_opa(arc, LV_OPA_COVER, LV_PART_MAIN);
 }
 
+// ─────────────────────────────
+// ZDARZENIA UI
+// ─────────────────────────────
 void arc_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -91,6 +102,9 @@ void arc_event_cb(lv_event_t *e)
         set_temperature = reversed_val / 10.0f;
         update_set_temp_label();
         update_arc_color(arc, set_temperature);
+
+        // 🔴 KLUCZOWE: zgłoś zmianę do logiki sieciowej (anty-nadpisywanie GET)
+        heatbeat_on_target_temp_changed(set_temperature);
     }
 }
 
@@ -98,17 +112,17 @@ static void slider_target_temp_event_cb(lv_event_t* e) {
     lv_obj_t* slider = lv_event_get_target(e);
     int32_t value = lv_slider_get_value(slider);
     float new_target = (float)value;
-    
-    // Zaktualizuj label na ekranie
+
     char buf[16];
     snprintf(buf, sizeof(buf), "%.1f°C", new_target);
     lv_label_set_text(label_set_temp, buf);
-    
-    // Wyślij POST do backendu
+
     heatbeat_on_target_temp_changed(new_target);
 }
 
-
+// ─────────────────────────────
+// INICJALIZACJA EKRANU
+// ─────────────────────────────
 void main_screen_init(void)
 {
     ui_main_screen = lv_obj_create(NULL);
@@ -130,27 +144,47 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(label_pres, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_pres, LV_ALIGN_TOP_MID, 0, 140);
 
-    lv_obj_t *arc = lv_arc_create(ui_main_screen);
-    lv_obj_set_size(arc, 466, 466);
-    lv_arc_set_bg_angles(arc, 0, 180);
-    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_range(arc, 100, 400);
-    lv_arc_set_value(arc, (int)(set_temperature * 10));
-    lv_obj_add_event_cb(arc, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_set_style_arc_width(arc, 25, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(arc, 25, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
-    lv_obj_set_style_arc_color(arc, lv_color_make(50, 50, 50), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(arc, 10, LV_PART_KNOB);
-    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(arc, LV_OBJ_FLAG_ADV_HITTEST);
+    // --- ŁUK / ARC ---
+    arc_control = lv_arc_create(ui_main_screen);
+    lv_obj_set_size(arc_control, 466, 466);
+    lv_arc_set_bg_angles(arc_control, 0, 180);
+    lv_obj_align(arc_control, LV_ALIGN_CENTER, 0, 0);
+    lv_arc_set_range(arc_control, 100, 400);
+    lv_arc_set_value(arc_control, (int)(set_temperature * 10));
+    lv_obj_add_event_cb(arc_control, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_set_style_arc_width(arc_control, 25, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_control, 25, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_control, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_control, lv_color_make(50, 50, 50), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(arc_control, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(arc_control, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc_control, 10, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_control, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(arc_control, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(arc_control, LV_OBJ_FLAG_ADV_HITTEST);
 
+    // --- Label set_temp ---
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 0);
     update_set_temp_label();
-    update_arc_color(arc, set_temperature);
+    update_arc_color(arc_control, set_temperature);
+}
+
+// ─────────────────────────────
+// INTEGRACJA Z BACKENDEM
+// ─────────────────────────────
+void main_screen_set_target_c(float c) {
+    set_temperature = c;
+    update_set_temp_label();
+    update_arc_color(arc_control, set_temperature);
+    if (arc_control) {
+        int arc_val = 100 + 400 - (int)(set_temperature * 10); // odwrotna skala
+        lv_arc_set_value(arc_control, arc_val);
+    }
+    printf("[UI] Zmieniono temperaturę zadaną: %.1f°C\n", set_temperature);
+}
+
+float main_screen_get_target_c(void) {
+    return set_temperature;
 }
