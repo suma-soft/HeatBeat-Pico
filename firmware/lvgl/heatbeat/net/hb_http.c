@@ -44,6 +44,8 @@ static void  on_err(void *arg, err_t lwip_err);
 
 static err_t on_connected(void *arg, struct tcp_pcb *tpcb, err_t lwip_err) {
     hb_client_t *c = (hb_client_t *)arg;
+    printf("[HTTP] Połączono: err=%d\n", lwip_err);
+    
     if (lwip_err != ERR_OK) {
         c->err = HB_HTTP_ERR_CONNECT;
         c->state = ST_ERROR;
@@ -57,11 +59,14 @@ static err_t on_connected(void *arg, struct tcp_pcb *tpcb, err_t lwip_err) {
     c->state = ST_SENDING;
     c->pcb = tpcb;
 
+    printf("[HTTP] Przełączenie do wysyłania\n");
+
     // natychmiast wypchnij pierwszą porcję
     u16_t space = tcp_sndbuf(tpcb);
     if (space > 0 && c->req_sent < c->req_len) {
         u16_t chunk = (u16_t)(c->req_len - c->req_sent);
         if (chunk > space) chunk = space;
+        printf("[HTTP] Wysyłam %u bajtów\n", chunk);
         err_t w = tcp_write(tpcb, c->req + c->req_sent, chunk, TCP_WRITE_FLAG_COPY);
         if (w == ERR_OK) tcp_output(tpcb);
     }
@@ -70,19 +75,24 @@ static err_t on_connected(void *arg, struct tcp_pcb *tpcb, err_t lwip_err) {
 
 static err_t on_sent(void *arg, struct tcp_pcb *tpcb, u16_t len) {
     hb_client_t *c = (hb_client_t *)arg;
+    printf("[HTTP] Wysłano %u bajtów\n", len);
     c->req_sent += len;
 
     if (c->req_sent >= c->req_len) {
+        printf("[HTTP] Wszystkie dane wysłane, przełączenie do odbierania\n");
         c->state = ST_RECEIVING;
         tcp_recv(tpcb, on_recv);
     } else {
+        printf("[HTTP] Pozostało do wysłania (%u/%u)\n", c->req_sent, c->req_len);
         u16_t space = tcp_sndbuf(tpcb);
         if (space > 0) {
             u16_t chunk = (u16_t)(c->req_len - c->req_sent);
             if (chunk > space) chunk = space;
+            printf("[HTTP] Wysyłam kolejny fragment %u bajtów\n", chunk);
             err_t w = tcp_write(tpcb, c->req + c->req_sent, chunk, TCP_WRITE_FLAG_COPY);
             if (w == ERR_OK) tcp_output(tpcb);
             else if (w != ERR_MEM) {
+                printf("[HTTP] Błąd tcp_write: %d\n", w);
                 c->err = HB_HTTP_ERR_SEND;
                 c->state = ST_ERROR;
                 return w;
@@ -96,15 +106,19 @@ static err_t on_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
     hb_client_t *c = (hb_client_t *)arg;
 
     if (!p) {
+        printf("[HTTP] Połączenie zamknięte, gotowe\n");
         c->state = ST_DONE;
         return ERR_OK;
     }
     if (err != ERR_OK) {
+        printf("[HTTP] Błąd odbierania: %d\n", err);
         pbuf_free(p);
         c->err = HB_HTTP_ERR_RECV;
         c->state = ST_ERROR;
         return err;
     }
+
+    printf("[HTTP] Odebrano %u bajtów\n", p->tot_len);
 
     struct pbuf *q = p;
     while (q && c->resp_len < sizeof(c->resp)) {
@@ -115,6 +129,21 @@ static err_t on_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
         c->resp_len += copy;
         q = q->next;
     }
+    
+    // Pokazujmy tylko kod odpowiedzi, nie całą treść
+    if (c->resp_len >= 12) {  // "HTTP/1.1 200"
+        char status_line[64];
+        int copy_len = c->resp_len < 63 ? c->resp_len : 63;
+        memcpy(status_line, c->resp, copy_len);
+        status_line[copy_len] = '\0';
+        // Znajdź koniec pierwszej linii
+        char *end = strchr(status_line, '\r');
+        if (end) *end = '\0';
+        end = strchr(status_line, '\n');
+        if (end) *end = '\0';
+        printf("[HTTP] Status: %s\n", status_line);
+    }
+    
     tcp_recved(tpcb, p->tot_len);
     pbuf_free(p);
     return ERR_OK;
@@ -122,6 +151,7 @@ static err_t on_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 
 static void on_err(void *arg, err_t lwip_err) {
     hb_client_t *c = (hb_client_t *)arg;
+    printf("[HTTP] Błąd lwIP: %d\n", lwip_err);
     (void)lwip_err;
     if (c->state != ST_DONE) {
         c->err = HB_HTTP_ERR_CONNECT;
@@ -138,25 +168,38 @@ static const char* find_http_body(const char *buf, size_t len) {
 }
 
 static hb_http_status_t run_client(hb_client_t *c, const ip4_addr_t *ip, u16_t port, uint32_t timeout_ms) {
+    printf("[HTTP] Start klienta (timeout=%ums)\n", (unsigned)timeout_ms);
+    
     c->pcb = tcp_new_ip_type(IPADDR_TYPE_V4);
-    if (!c->pcb) return HB_HTTP_ERR_CONNECT;
+    if (!c->pcb) {
+        printf("[HTTP] tcp_new nie powiódł się\n");
+        return HB_HTTP_ERR_CONNECT;
+    }
 
     tcp_arg(c->pcb, c);
     tcp_err(c->pcb, on_err);
 
     c->state = ST_CONNECTING;
+    printf("[HTTP] Łączenie...\n");
     err_t e = tcp_connect(c->pcb, ip, port, on_connected);
     if (e != ERR_OK) {
+        printf("[HTTP] tcp_connect nie powiódł się: %d\n", e);
         tcp_close(c->pcb);
         c->pcb = NULL;
         return HB_HTTP_ERR_CONNECT;
     }
 
     absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
+    uint32_t loop_count = 0;
+    
     while (c->state != ST_DONE && c->state != ST_ERROR) {
+        loop_count++;
+        
         cyw43_arch_poll();
         tight_loop_contents();
+        
         if (absolute_time_diff_us(get_absolute_time(), deadline) <= 0) {
+            printf("[HTTP] Timeout po %u iteracjach\n", (unsigned)loop_count);
             c->err = HB_HTTP_ERR_TIMEOUT;
             c->state = ST_ERROR;
             break;
@@ -170,6 +213,7 @@ static hb_http_status_t run_client(hb_client_t *c, const ip4_addr_t *ip, u16_t p
                 err_t w = tcp_write(c->pcb, c->req + c->req_sent, chunk, TCP_WRITE_FLAG_COPY);
                 if (w == ERR_OK) tcp_output(c->pcb);
                 else if (w != ERR_MEM) {
+                    printf("[HTTP] Błąd tcp_write: %d\n", w);
                     c->err = HB_HTTP_ERR_SEND;
                     c->state = ST_ERROR;
                 }
@@ -190,14 +234,14 @@ static hb_http_status_t run_client(hb_client_t *c, const ip4_addr_t *ip, u16_t p
 
 // ───────────────────────── GET /settings ─────────────────────────
 
-hb_http_status_t hb_http_get_settings_target_temp(
+hb_http_status_t hb_http_get_settings(
     const char *host,
     uint16_t port,
     int device_id,
-    float *out_target_c,
+    hb_settings_response_t *out_settings,
     uint32_t timeout_ms)
 {
-    if (!host || !out_target_c) return HB_HTTP_ERR_PARAM;
+    if (!host || !out_settings) return HB_HTTP_ERR_PARAM;
 
     ip4_addr_t ip;
     if (!ip4addr_aton(host, &ip)) return HB_HTTP_ERR_IP;
@@ -225,8 +269,72 @@ hb_http_status_t hb_http_get_settings_target_temp(
     if (c.resp_len < (sizeof(c.resp) - 1)) ((char*)c.resp)[c.resp_len] = '\0';
     else ((char*)c.resp)[sizeof(c.resp) - 1] = '\0';
 
-    if (!hb_parse_target_temp_from_json(body, out_target_c)) return HB_HTTP_ERR_PARSE;
+    // Parsuj target_temp_c
+    if (!hb_parse_target_temp_from_json(body, &out_settings->target_temp_c)) {
+        return HB_HTTP_ERR_PARSE;
+    }
+
+    // Parsuj last_source
+    if (!hb_parse_last_source_from_json(body, out_settings->last_source, 
+                                       sizeof(out_settings->last_source))) {
+        return HB_HTTP_ERR_PARSE;
+    }
+
     return HB_HTTP_OK;
+}
+
+hb_http_status_t hb_http_get_settings_target_temp(
+    const char *host,
+    uint16_t port,
+    int device_id,
+    float *out_target_c,
+    uint32_t timeout_ms)
+{
+    if (!host || !out_target_c) return HB_HTTP_ERR_PARAM;
+
+    hb_settings_response_t settings;
+    hb_http_status_t st = hb_http_get_settings(host, port, device_id, &settings, timeout_ms);
+    if (st == HB_HTTP_OK) {
+        *out_target_c = settings.target_temp_c;
+    }
+    return st;
+}
+
+// ───────────────────────── PUT /settings ─────────────────────────
+
+hb_http_status_t hb_http_set_settings_target_temp(
+    const char *host,
+    uint16_t port,
+    int device_id,
+    float target_temp_c,
+    uint32_t timeout_ms)
+{
+    if (!host) return HB_HTTP_ERR_PARAM;
+
+    ip4_addr_t ip;
+    if (!ip4addr_aton(host, &ip)) return HB_HTTP_ERR_IP;
+
+    char json[128];
+    int jn = hb_build_settings_json(json, sizeof(json), target_temp_c);
+    if (jn < 0) return HB_HTTP_ERR_PARAM;
+
+    char req[512];
+    int rn = hb_build_http_put_settings(req, sizeof(req), host, port, device_id, json);
+    if (rn < 0) return HB_HTTP_ERR_PARAM;
+
+    hb_client_t c = {
+        .pcb = NULL,
+        .state = ST_IDLE,
+        .err = 0,
+        .req = req,
+        .req_len = (uint32_t)rn,
+        .req_sent = 0,
+        .resp_len = 0,
+    };
+
+    // Dla PUT nie wymagamy parsowania body – liczy się 200 OK
+    hb_http_status_t st = run_client(&c, &ip, port, timeout_ms);
+    return st;
 }
 
 // ───────────────────────── POST /reading ─────────────────────────

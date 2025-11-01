@@ -37,6 +37,10 @@ extern lv_obj_t *label_humi;
 extern lv_obj_t *label_pres;
 extern lv_obj_t *label_set_temp;
 extern lv_obj_t *label_target;
+extern lv_obj_t *label_status;        // Status komunikacji
+extern lv_obj_t *label_notification; // Powiadomienia dla użytkownika
+extern lv_obj_t *icon_wifi;          // Ikona WiFi
+extern lv_obj_t *icon_phone;         // Ikona telefonu (zmiana z aplikacji)
 extern lv_obj_t *btn_up;
 extern lv_obj_t *btn_down;
 
@@ -45,6 +49,16 @@ extern int humidity;
 
 void update_labels(void);
 void main_screen_init(void);
+
+// Funkcje do wyświetlania statusu i powiadomień
+void main_screen_show_status(const char *message, bool is_error);
+void main_screen_show_notification(const char *message, int duration_ms);
+void main_screen_update_wifi_status(bool connected, int rssi);
+void main_screen_show_external_change(bool from_app);
+void main_screen_update_timers(void);
+void main_screen_update_timers_with_time(uint32_t now);
+void main_screen_set_target_c_from_server(float c, const char *source);
+void main_screen_set_notification_time(uint32_t time);
 
 #ifdef __cplusplus
 }

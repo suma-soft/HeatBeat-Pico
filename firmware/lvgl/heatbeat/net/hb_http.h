@@ -25,12 +25,36 @@ typedef enum {
     HB_HTTP_ERR_PARSE   = -7,
 } hb_http_status_t;
 
-// GET /device/{id}/settings → zwraca target_temp_c
+// Struktura dla parsowania odpowiedzi ustawień
+typedef struct {
+    float target_temp_c;
+    char last_source[16];  // "app", "device", lub pusty string dla null
+} hb_settings_response_t;
+
+// GET /device/{id}/settings → zwraca target_temp_c i last_source
+hb_http_status_t hb_http_get_settings(
+    const char *host,
+    uint16_t port,
+    int device_id,
+    hb_settings_response_t *out_settings,
+    uint32_t timeout_ms
+);
+
+// GET /device/{id}/settings → zwraca target_temp_c (wstecznie kompatybilne)
 hb_http_status_t hb_http_get_settings_target_temp(
     const char *host,
     uint16_t port,
     int device_id,
     float *out_target_c,
+    uint32_t timeout_ms
+);
+
+// PUT /device/{id}/settings → ustawia target_temp_c ze źródłem "device"
+hb_http_status_t hb_http_set_settings_target_temp(
+    const char *host,
+    uint16_t port,
+    int device_id,
+    float target_temp_c,
     uint32_t timeout_ms
 );
 

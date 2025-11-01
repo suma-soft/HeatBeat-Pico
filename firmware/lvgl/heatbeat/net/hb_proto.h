@@ -22,7 +22,7 @@
 // ========================= KONFIGURACJA DOMYŚLNA ============================
 // Możesz nadpisać te define'y przed #include "net/hb_proto.h"
 #ifndef HB_DEFAULT_HOST
-#define HB_DEFAULT_HOST "192.168.55.1"
+#define HB_DEFAULT_HOST "192.168.55.119"
 #endif
 
 #ifndef HB_DEFAULT_PORT
@@ -96,6 +96,42 @@ static inline int hb_build_http_get_settings(char *out, size_t cap,
     return (n >= 0 && (size_t)n < cap) ? n : -2;
 }
 
+// ==================== BUDOWANIE NAGŁÓWKÓW HTTP/1.1 (PUT) ====================
+// PUT /device/{device_id}/settings - do ustawiania temperatury zadanej
+static inline int hb_build_http_put_settings(char *out, size_t cap,
+                                             const char *host,
+                                             uint16_t port,
+                                             int device_id,
+                                             const char *json_body)
+{
+    if (!out || cap == 0 || !host || !json_body) return -1;
+
+    size_t body_len = strlen(json_body);
+    int n = snprintf(out, cap,
+        "PUT /device/%d/settings HTTP/1.1\r\n"
+        "Host: %s:%u\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %u\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "%s",
+        device_id, host, (unsigned)port, (unsigned)body_len, json_body);
+
+    return (n >= 0 && (size_t)n < cap) ? n : -2;
+}
+
+// ====================== BUDOWANIE JSON DLA USTAWIEŃ =========================
+static inline int hb_build_settings_json(char *out, size_t cap,
+                                         float target_temp_c)
+{
+    if (!out || cap == 0) return -1;
+
+    int n = snprintf(out, cap,
+                     "{\"target_temp_c\":%.2f,\"source\":\"device\"}",
+                     target_temp_c);
+    return (n >= 0 && (size_t)n < cap) ? n : -2;
+}
+
 // ======================= PARSOWANIE JSON (odpowiedź GET) =====================
 // Szuka "target_temp_c": <float>
 static inline bool hb_parse_target_temp_from_json(const char *json,
@@ -118,6 +154,47 @@ static inline bool hb_parse_target_temp_from_json(const char *json,
 
     *out_target_c = tmp;
     return true;
+}
+
+// Parsuje "last_source": "string" z JSON
+static inline bool hb_parse_last_source_from_json(const char *json,
+                                                  char *out_source,
+                                                  size_t source_cap)
+{
+    if (!json || !out_source || source_cap == 0) return false;
+
+    const char *key = "\"last_source\"";
+    const char *p = strstr(json, key);
+    if (!p) {
+        out_source[0] = '\0';
+        return true; // source może być null/brak
+    }
+
+    p = strchr(p + strlen(key), ':');
+    if (!p) return false;
+    p++;
+
+    // Pomiń spacje
+    while (*p == ' ' || *p == '\t') p++;
+
+    // Sprawdź czy null
+    if (strncmp(p, "null", 4) == 0) {
+        out_source[0] = '\0';
+        return true;
+    }
+
+    // Szukaj cudzysłowu
+    if (*p != '"') return false;
+    p++;
+
+    // Kopiuj do zamykającego cudzysłowu
+    size_t i = 0;
+    while (*p && *p != '"' && i < source_cap - 1) {
+        out_source[i++] = *p++;
+    }
+    out_source[i] = '\0';
+
+    return (*p == '"');
 }
 
 // ============================ POMOCNICZE PRESETY =============================
