@@ -94,6 +94,7 @@ static void touchpad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 {
     static lv_coord_t last_x = 0;
     static lv_coord_t last_y = 0;
+    static bool debug_printed = false;
     bsp_touch_data_t touch_data;
     touch_if->read();
     
@@ -103,9 +104,17 @@ static void touchpad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
         last_x = touch_data.coords[0].x;
         last_y = touch_data.coords[0].y;
         data->state = LV_INDEV_STATE_PR;
+        printf("[TOUCH] Pressed at (%d, %d)\n", last_x, last_y);
     }
     else {
+        if (data->state == LV_INDEV_STATE_PR && !debug_printed) {
+            printf("[TOUCH] Released\n");
+            debug_printed = true;
+        }
         data->state = LV_INDEV_STATE_REL;
+        if (data->state == LV_INDEV_STATE_REL) {
+            debug_printed = false;
+        }
     }
 
     /*Set the last pressed coordinates*/

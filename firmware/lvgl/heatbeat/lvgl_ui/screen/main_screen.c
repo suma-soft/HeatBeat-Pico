@@ -30,6 +30,129 @@ static int target_temp = 22;
 // Timer dla powiadomień
 static uint32_t notification_hide_time = 0;
 
+// Blokada ekranu
+static bool screen_locked = true;  // Domyślnie zablokowany
+static int tap_count = 0;
+static uint32_t last_tap_time = 0;
+static const uint32_t TAP_TIMEOUT_MS = 1000; // 1000ms na 3 dotknięcia (więcej czasu)
+static const uint32_t AUTO_LOCK_MS = 60000; // 60s auto-lock (1 minuta)
+static uint32_t last_activity_time = 0;
+
+// ─────────────────────────────
+// FUNKCJE BLOKADY EKRANU
+// ─────────────────────────────
+void update_screen_locked_state(void) {
+    printf("[UI] update_screen_locked_state() called, screen_locked=%d\n", screen_locked ? 1 : 0);
+    
+    if (screen_locked) {
+        printf("[UI] Setting LOCKED state\n");
+        // Ekran zablokowany - czarne tło, ciemno szary tekst, ukryj suwak i status
+        lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);
+        lv_obj_add_flag(arc_control, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(arc_control, LV_OBJ_FLAG_CLICKABLE); // Wyłącz klikanie arc w trybie locked
+        lv_obj_add_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Ukryj status połączenia
+        
+        // Ciemno szary kolor tekstu dla temperatury
+        lv_obj_set_style_text_color(label_temp, lv_color_make(80, 80, 80), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_set_temp, lv_color_make(80, 80, 80), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_humi, lv_color_make(60, 60, 60), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_pres, lv_color_make(60, 60, 60), LV_PART_MAIN);
+        
+        // Pokaż komunikat o odblokowaniu na dłużej
+        main_screen_show_notification("3x dotknij aby odblokować", 0); // 0 = nie ukrywaj automatycznie
+    } else {
+        printf("[UI] Setting UNLOCKED state\n");
+        // Ekran odblokowany - czarne tło, białe napisy, pokaż suwak i status
+        lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);
+        lv_obj_clear_flag(arc_control, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(arc_control, LV_OBJ_FLAG_CLICKABLE); // Włącz klikanie arc w trybie unlocked
+        lv_obj_clear_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Pokaż status połączenia
+        
+        // Białe kolory tekstu
+        lv_obj_set_style_text_color(label_temp, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_pres, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label_status, lv_color_make(200, 200, 200), LV_PART_MAIN);
+        
+        // Ukryj komunikat o odblokowaniu
+        if (label_notification) {
+            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
+            notification_hide_time = 0; // Resetuj timer
+        }
+    }
+    printf("[UI] update_screen_locked_state() finished\n");
+}
+
+void handle_screen_tap(void) {
+    uint32_t now = lv_tick_get();
+    printf("[UI] Screen tap detected, locked=%d\n", screen_locked ? 1 : 0);
+    
+    if (screen_locked) {
+        // Sprawdź czy to jest w czasie na potrójne dotknięcie
+        if (now - last_tap_time < TAP_TIMEOUT_MS) {
+            tap_count++;
+            printf("[UI] Tap count increased to %d\n", tap_count);
+        } else {
+            tap_count = 1; // Reset licznika
+            printf("[UI] Tap count reset to 1\n");
+        }
+        
+        last_tap_time = now;
+        
+        // Pokaż feedback o liczbie dotknięć na dłużej
+        char tap_feedback[32];
+        snprintf(tap_feedback, sizeof(tap_feedback), "Dotknięcie %d/3", tap_count);
+        main_screen_show_notification(tap_feedback, 3000); // 3 sekundy zamiast 1
+        
+        if (tap_count >= 3) {
+            // Odblokuj ekran
+            printf("[UI] Before unlock: screen_locked=%d, tap_count=%d\n", screen_locked ? 1 : 0, tap_count);
+            screen_locked = false;
+            tap_count = 0;
+            
+            // WAŻNE: Reset activity timer przy odblokowaniu!
+            last_activity_time = now;
+            printf("[UI] Activity timer reset on unlock\n");
+            
+            printf("[UI] After setting: screen_locked=%d, tap_count=%d\n", screen_locked ? 1 : 0, tap_count);
+            printf("[UI] Ekran odblokowany\n");
+            
+            printf("[UI] Calling update_screen_locked_state()...\n");
+            update_screen_locked_state();
+            printf("[UI] update_screen_locked_state() completed\n");
+            
+            main_screen_show_notification("Ekran odblokowany!", 3000); // 3 sekundy zamiast 2
+            printf("[UI] Unlock notification shown\n");
+        }
+    } else {
+        // Ekran odblokowany - resetuj timer auto-lock
+        last_activity_time = now;
+        printf("[UI] Activity timer reset\n");
+    }
+}
+
+void check_auto_lock(void) {
+    if (!screen_locked) {
+        uint32_t now = lv_tick_get();
+        uint32_t time_since_activity = now - last_activity_time;
+        
+        // Debug tylko jeśli zbliżamy się do auto-lock (ostatnie 5 sekund)
+        if (time_since_activity > (AUTO_LOCK_MS - 5000)) {
+            printf("[UI] Auto-lock check: time_since_activity=%lu, threshold=%lu\n", 
+                   time_since_activity, (unsigned long)AUTO_LOCK_MS);
+        }
+        
+        if (time_since_activity > AUTO_LOCK_MS) {
+            printf("[UI] Auto-lock triggered! time_since_activity=%lu > %lu\n", 
+                   time_since_activity, (unsigned long)AUTO_LOCK_MS);
+            screen_locked = true;
+            printf("[UI] Auto-lock ekranu\n");
+            update_screen_locked_state();
+        }
+    }
+}
+
 // ─────────────────────────────
 // FUNKCJE POMOCNICZE
 // ─────────────────────────────
@@ -37,15 +160,32 @@ void update_labels()
 {
     char buf[32];
 
-    snprintf(buf, sizeof(buf), "Temperatura: %.1f°C", current_temp);
-    if (label_temp) lv_label_set_text(label_temp, buf);
+    if (screen_locked) {
+        // Ekran zablokowany - tylko temperatura z BME (większa czcionka)
+        snprintf(buf, sizeof(buf), "%.1f°C", current_temp);
+        if (label_temp) lv_label_set_text(label_temp, buf);
+        
+        // Ukryj inne dane czujników w trybie zablokowanym
+        if (label_humi) lv_obj_add_flag(label_humi, LV_OBJ_FLAG_HIDDEN);
+        if (label_pres) lv_obj_add_flag(label_pres, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        // Ekran odblokowany - wszystkie dane
+        snprintf(buf, sizeof(buf), "Temperatura: %.1f°C", current_temp);
+        if (label_temp) lv_label_set_text(label_temp, buf);
 
-    snprintf(buf, sizeof(buf), "Wilgotność: %d%%", humidity);
-    if (label_humi) lv_label_set_text(label_humi, buf);
+        snprintf(buf, sizeof(buf), "Wilgotność: %d%%", humidity);
+        if (label_humi) {
+            lv_label_set_text(label_humi, buf);
+            lv_obj_clear_flag(label_humi, LV_OBJ_FLAG_HIDDEN);
+        }
 
-    float pressure_hpa = pressure * 0.01f;
-    snprintf(buf, sizeof(buf), "Ciśnienie: %.2f hPa", pressure_hpa);
-    if (label_pres) lv_label_set_text(label_pres, buf);
+        float pressure_hpa = pressure * 0.01f;
+        snprintf(buf, sizeof(buf), "Ciśnienie: %.2f hPa", pressure_hpa);
+        if (label_pres) {
+            lv_label_set_text(label_pres, buf);
+            lv_obj_clear_flag(label_pres, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 
     snprintf(buf, sizeof(buf), "Zadana: %d°C", target_temp);
     if (label_target) lv_label_set_text(label_target, buf);
@@ -100,12 +240,30 @@ static void update_arc_color(lv_obj_t *arc, float temperature)
 // ─────────────────────────────
 // ZDARZENIA UI
 // ─────────────────────────────
+void screen_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    printf("[UI] Screen event: %d\n", code);
+    if (code == LV_EVENT_PRESSED) {
+        printf("[UI] Screen pressed event detected\n");
+        handle_screen_tap();
+    }
+}
+
 void arc_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t *arc = lv_event_get_target(e);
     if (code == LV_EVENT_VALUE_CHANGED)
     {
+        if (screen_locked) {
+            // Zablokowany - przywróć poprzednią wartość
+            lv_arc_set_value(arc, (int)(set_temperature * 10));
+            return;
+        }
+        
+        handle_screen_tap(); // Odśwież timer aktywności
+        
         int val = lv_arc_get_value(arc);
         int reversed_val = 100 + 400 - val;
         set_temperature = reversed_val / 10.0f;
@@ -151,8 +309,13 @@ void main_screen_show_notification(const char *message, int duration_ms) {
         lv_label_set_text(label_notification, message);
         lv_obj_clear_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
         
-        // Czas zostanie ustawiony przez wywołującą funkcję z main.c
-        notification_hide_time = 1; // tymczasowa wartość
+        if (duration_ms == 0) {
+            // 0 oznacza: nie ukrywaj automatycznie
+            notification_hide_time = 0;
+        } else {
+            // Ustaw czas ukrycia na podstawie duration_ms
+            notification_hide_time = lv_tick_get() + duration_ms;
+        }
     }
 }
 
@@ -218,24 +381,28 @@ void main_screen_init(void)
 
     label_time = lv_label_create(ui_main_screen);
 
+    // --- STATUS POŁĄCZENIA NA GÓRZE ---
+    label_status = lv_label_create(ui_main_screen);
+    lv_obj_set_style_text_color(label_status, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_align(label_status, LV_ALIGN_TOP_MID, 0, 45); // Przesunięte z 25 na 45
+    lv_label_set_text(label_status, "Łączenie...");
+
+    // --- CZUJNIKI PONIŻEJ ---
     label_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_align(label_temp, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_text_font(label_temp, &lv_font_montserrat_28_pl, 0); // Większa czcionka
+    lv_obj_align(label_temp, LV_ALIGN_TOP_MID, 0, 80); // Przesunięte z 60 na 80
 
     label_humi = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_humi, lv_color_white(), LV_PART_MAIN);
-    lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_align(label_humi, LV_ALIGN_TOP_MID, 0, 130); // Przesunięte z 110 na 130
 
     label_pres = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_pres, lv_color_white(), LV_PART_MAIN);
-    lv_obj_align(label_pres, LV_ALIGN_TOP_MID, 0, 140);
+    lv_obj_align(label_pres, LV_ALIGN_TOP_MID, 0, 180); // Przesunięte z 160 na 180
 
-    // --- STATUS I POWIADOMIENIA ---
-    label_status = lv_label_create(ui_main_screen);
-    lv_obj_set_style_text_color(label_status, lv_color_make(200, 200, 200), LV_PART_MAIN);
-    lv_obj_align(label_status, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_label_set_text(label_status, "Łączenie...");
-
+    // --- POWIADOMIENIA ---
+    // --- POWIADOMIENIA ---
     label_notification = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_notification, lv_color_make(255, 255, 100), LV_PART_MAIN);
     lv_obj_align(label_notification, LV_ALIGN_BOTTOM_MID, 0, -50);
@@ -274,9 +441,20 @@ void main_screen_init(void)
     // --- Label set_temp ---
     label_set_temp = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_set_temp, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label_set_temp, &lv_font_montserrat_28_pl, 0); // Większa czcionka
     lv_obj_align(label_set_temp, LV_ALIGN_CENTER, 0, 0);
     update_set_temp_label();
     update_arc_color(arc_control, set_temperature);
+    
+    // --- Obsługa dotknięć ekranu ---
+    lv_obj_clear_flag(ui_main_screen, LV_OBJ_FLAG_SCROLLABLE); // Wyłącz przewijanie
+    lv_obj_add_flag(ui_main_screen, LV_OBJ_FLAG_CLICKABLE);    // Włącz klikanie
+    lv_obj_add_event_cb(ui_main_screen, screen_event_cb, LV_EVENT_PRESSED, NULL);
+    printf("[UI] Screen touch events configured\n");
+    
+    // --- Ustaw początkowy stan blokady ---
+    last_activity_time = lv_tick_get();
+    update_screen_locked_state();
 }
 
 // ─────────────────────────────

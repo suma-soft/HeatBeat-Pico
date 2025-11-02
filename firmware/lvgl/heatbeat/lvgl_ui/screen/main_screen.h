@@ -60,6 +60,9 @@ void main_screen_update_timers_with_time(uint32_t now);
 void main_screen_set_target_c_from_server(float c, const char *source);
 void main_screen_set_notification_time(uint32_t time);
 
+// Funkcje blokady ekranu
+void check_auto_lock(void);
+
 #ifdef __cplusplus
 }
 #endif

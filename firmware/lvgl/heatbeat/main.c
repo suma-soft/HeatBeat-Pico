@@ -22,6 +22,9 @@
 #define ENABLE_HTTP_CLIENT 1
 #endif
 
+// TYMCZASOWE WYŁĄCZENIE WiFi dla testów UI
+#define TEMP_DISABLE_WIFI 1
+
 #if ENABLE_WIFI
   #include "pico/cyw43_arch.h"
   #include "lwip/netif.h"
@@ -49,7 +52,7 @@
 #endif
 
 #ifndef HB_HOST
-#define HB_HOST "192.168.55.119"
+#define HB_HOST "192.168.55.117"
 #endif
 #ifndef HB_PORT
 #define HB_PORT 8000
@@ -302,10 +305,10 @@ static uint32_t last_recovery_attempt = 0;
 static int recovery_attempts_count = 0;
 
 // Parametry konfiguracyjne
-#define SERVER_CHECK_INTERVAL_MS    5000   // Sprawdzanie serwera co 5s (dla testów)
-#define READING_SEND_INTERVAL_MS    15000  // Wysyłanie odczytów co 15s
+#define SERVER_CHECK_INTERVAL_MS    120000 // Sprawdzanie serwera co 2 minuty (zmniejszone z 30s)
+#define READING_SEND_INTERVAL_MS    120000 // Wysyłanie odczytów co 2 minuty (zwiększone z 30s)
 #define LOCAL_OVERRIDE_WINDOW_MS    5000   // Okno ochrony lokalnej zmiany
-#define CONNECTION_TIMEOUT_MS       4000   // Timeout dla połączeń HTTP
+#define CONNECTION_TIMEOUT_MS       500    // Timeout dla połączeń HTTP (skrócony z 1000ms)
 #define HEARTBEAT_INTERVAL_MS       30000  // Heartbeat co 30s
 
 // Helper function for floating point comparison
@@ -322,6 +325,7 @@ __attribute__((weak)) void  main_screen_update_wifi_status(bool connected, int r
 __attribute__((weak)) void  main_screen_set_target_c_from_server(float c, const char *source) { (void)c; (void)source; }
 __attribute__((weak)) void  main_screen_update_timers_with_time(uint32_t now) { (void)now; }
 __attribute__((weak)) void  main_screen_set_notification_time(uint32_t time) { (void)time; }
+__attribute__((weak)) void  check_auto_lock(void) { }
 
 // Startup - pobierz ustawienia z serwera
 static void startup_sync_with_server(void) {
@@ -505,10 +509,10 @@ int main(void) {
     print_free_ram("Boot");
 
     bool wifi_ok = false;
-#if ENABLE_WIFI
+#if ENABLE_WIFI && !TEMP_DISABLE_WIFI
     {
         absolute_time_t wifi_deadline = make_timeout_time_ms(20000); // Zwiększony timeout
-        printf("[BOOT] Start Wi-Fi init...\n");
+        printf("[BOOT] Start Wi-Fi init (TEMP_DISABLE_WIFI=0)...\n");
         main_screen_show_status("Łączenie z WiFi...", false);
         
         int wifi_attempts = 0;
@@ -561,6 +565,13 @@ int main(void) {
         }
     }
     
+#elif ENABLE_WIFI && TEMP_DISABLE_WIFI
+    {
+        printf("[BOOT] WiFi TYMCZASOWO WYŁĄCZONE dla testów UI\n");
+        main_screen_show_status("WiFi wyłączone - tylko UI", false);
+        main_screen_update_wifi_status(false, 0);
+        wifi_ok = false;
+    }
 #endif
 
     printf("[BOOT] Init I2C/RTC/LVGL...\n");
@@ -596,10 +607,17 @@ int main(void) {
 
     printf("[BOOT] Main loop.\n");
     while (true) {
+        // ZAWSZE najpierw obsługa UI - niezależnie od statusu sieci
         lv_timer_handler();
-        sleep_ms(LVGL_TICK_MS);
-
+        
+        // Aktualizacja timerów UI - ważne dla odblokowania
         uint32_t now = to_ms_since_boot(get_absolute_time());
+        main_screen_update_timers_with_time(now);
+        
+        // Sprawdzenie auto-lock ekranu - ważne dla odblokowania
+        check_auto_lock();
+        
+        sleep_ms(LVGL_TICK_MS);
 
         // zegar i heartbeat
         if (now - last_time > 1000) {
@@ -627,9 +645,6 @@ int main(void) {
             last_read = now;
         }
 
-        // Aktualizacja timerów UI
-        main_screen_update_timers_with_time(now);
-
         // Aktualizacja UI z cache (tylko raz po starcie)
         static bool ui_cache_applied = false;
         if (!ui_cache_applied && g_have_backend_cache) {
@@ -638,23 +653,21 @@ int main(void) {
             ui_cache_applied = true;
         }
 
-#if ENABLE_WIFI
-        // Monitoring błędów CYW43
-        cyw43_monitor_errors();
-        // Monitoring zdrowia CYW43 co 30 sekund
+#if ENABLE_WIFI && !TEMP_DISABLE_WIFI
+        // Monitoring błędów CYW43 - TYMCZASOWO WYŁĄCZONE dla stabilności UI
         static uint32_t last_cyw43_check = 0;
-        if (wifi_ok && (now - last_cyw43_check > 30000)) {
+        if (false && wifi_ok && recovery_attempts_count < 3 && (now - last_cyw43_check > 30000)) {
             if (!check_cyw43_health()) {
-                // Unikaj zbyt częstych prób recovery (minimum 2 minuty między próbami)
-                if (now - last_recovery_attempt > 120000) {
+                // Unikaj zbyt częstych prób recovery (minimum 30 sekund między próbami)
+                if (now - last_recovery_attempt > 30000) {
                     printf("[CYW43] Wykryto problemy ze zdrowiem modułu\n");
                     main_screen_show_status("Problem z modułem WiFi", true);
                     
                     last_recovery_attempt = now;
                     recovery_attempts_count++;
                     
-                    // Maksymalnie 3 próby recovery na sesję
-                    if (recovery_attempts_count <= 3) {
+                    // Maksymalnie 5 próby recovery na sesję
+                    if (recovery_attempts_count <= 5) {
                         // Spróbuj recovery
                         if (cyw43_error_recovery()) {
                             main_screen_show_status("WiFi przywrócony", false);
@@ -719,8 +732,8 @@ int main(void) {
             last_wifi_status_print = now;
         }
 
-        // Komunikacja z serwerem
-        if (wifi_connected && have_ip_up()) {
+        // Komunikacja z serwerem - tylko gdy WiFi stabilne (mało błędów recovery)
+        if (wifi_connected && have_ip_up() && recovery_attempts_count < 3) {
             // Sprawdzanie serwera - częściej przy pending request lub zgodnie z harmonogramem
             bool should_check_server = (g_pending_get_request && now - last_server_check > 2000) ||
                                       (now - last_server_check > SERVER_CHECK_INTERVAL_MS);
@@ -865,21 +878,21 @@ int main(void) {
             log_system_status();
             retry_failed_operations();
             
-            // Sprawdź WiFi reconnect jeśli nie ma połączenia
-            if (!wifi_connected && !have_ip_up()) {
-                printf("[WIFI] Próba automatycznego reconnect...\n");
-                main_screen_show_status("Łączenie z WiFi...", false);
-                if (wifi_connect_and_log()) {
-                    wifi_connected = true;
-                    int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
-                    main_screen_update_wifi_status(true, rssi);
-                    printf("[WIFI] Automatyczny reconnect pomyślny\n");
-                    main_screen_show_status("Połączono z WiFi", false);
-                } else {
-                    printf("[WIFI] Automatyczny reconnect nieudany\n");
-                    main_screen_show_status("Brak połączenia WiFi", true);
-                }
-            }
+            // TYMCZASOWO WYŁĄCZONE - automatyczny reconnect WiFi
+            // if (!wifi_connected && !have_ip_up()) {
+            //     printf("[WIFI] Próba automatycznego reconnect...\n");
+            //     main_screen_show_status("Łączenie z WiFi...", false);
+            //     if (wifi_connect_and_log()) {
+            //         wifi_connected = true;
+            //         int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
+            //         main_screen_update_wifi_status(true, rssi);
+            //         printf("[WIFI] Automatyczny reconnect pomyślny\n");
+            //         main_screen_show_status("Połączono z WiFi", false);
+            //     } else {
+            //         printf("[WIFI] Automatyczny reconnect nieudany\n");
+            //         main_screen_show_status("Brak połączenia WiFi", true);
+            //     }
+            // }
             
             last_system_check = now;
         }

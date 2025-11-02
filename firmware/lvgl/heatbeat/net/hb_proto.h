@@ -22,7 +22,7 @@
 // ========================= KONFIGURACJA DOMYŚLNA ============================
 // Możesz nadpisać te define'y przed #include "net/hb_proto.h"
 #ifndef HB_DEFAULT_HOST
-#define HB_DEFAULT_HOST "192.168.55.119"
+#define HB_DEFAULT_HOST "192.168.55.117"
 #endif
 
 #ifndef HB_DEFAULT_PORT
