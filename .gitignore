@@ -7,6 +7,10 @@ build/
 *.vcxproj.filters
 *.vcxproj.user
 *.sln
+*.rule
+*.stamp
+*.stamp.depend
+cmake_install.cmake
 .vs/
 CMakeSettings.json
 firmware/lvgl/heatbeat/lvgl_ui/cmake_install.cmake
