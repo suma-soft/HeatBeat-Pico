@@ -13,6 +13,7 @@
 #include "bsp_i2c.h"
 #include "bsp_pcf85063.h"
 #include "lvgl_ui/screen/main_screen.h"
+#include "net/hb_http.h"
 
 #ifndef ENABLE_WIFI
 #define ENABLE_WIFI 1
@@ -45,7 +46,7 @@
 #endif
 
 #ifndef HEATBEAT_API_BASE
-#define HEATBEAT_API_BASE "http://192.168.55.120:8000"
+#define HEATBEAT_API_BASE "http://192.168.55.117:8000"
 #endif
 
 // LED do diagnostyki (na Pico W/2W pod cyw43, ale mamy też GPIO25)
@@ -69,6 +70,8 @@ static void print_free_ram(const char* msg) {
 static void print_ip4(const ip4_addr_t* ip) {
     printf("%u.%u.%u.%u", ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
 }
+
+#if ENABLE_WIFI
 static inline struct netif* get_nif(void) { return netif_default ? netif_default : netif_list; }
 static inline bool have_ip_up(void) {
     struct netif* nif = get_nif();
@@ -152,6 +155,37 @@ static inline bool wifi_connect_and_log(void) { return false; }
 static inline void wifi_status_print_once(void) {}
 #endif // ENABLE_WIFI
 
+// Funkcja wywoływana przez UI gdy user zmieni temperaturę zadaną
+void heatbeat_on_target_temp_changed(float new_target) {
+    printf("[UI->HTTP] Temperatura zadana zmieniona na %.1f°C\n", new_target);
+    
+#if ENABLE_WIFI && ENABLE_HTTP_CLIENT
+    if (!have_ip_up()) {
+        printf("[HTTP] Brak połączenia WiFi - pominięcie wysyłki\n");
+        return;
+    }
+    
+    // Wysłanie do backendu - używamy stałych z CMake
+    hb_http_status_t status = hb_http_set_settings_target_temp(
+        "192.168.55.119",  // HB_DEFAULT_HOST
+        8000,              // HB_DEFAULT_PORT  
+        1,                 // HB_DEFAULT_DEVICE_ID
+        new_target,
+        500                // 500ms timeout (krótki żeby nie blokować UI)
+    );
+    
+    if (status == HB_HTTP_OK) {
+        printf("[HTTP] ✅ Temperatura zadana wysłana do backendu\n");
+        main_screen_show_status("Wysłano do serwera", false);
+    } else {
+        printf("[HTTP] ❌ Błąd wysyłania (status=%d)\n", status);
+        main_screen_show_status("Błąd wysyłania", true);
+    }
+#else
+    printf("[HTTP] HTTP client wyłączony - nie wysyłam\n");
+#endif
+}
+
 int main(void) {
     // Prosty „blink” diagnostyczny zanim wstanie USB/Wi-Fi
     gpio_init(BOOT_DIAG_LED);
@@ -208,7 +242,7 @@ int main(void) {
     static struct repeating_timer t;
     add_repeating_timer_ms(LVGL_TICK_MS, tick_cb, NULL, &t);
 
-    printf("[6/6] ✅ System gotowy!\n\n");
+    printf("[BOOT] ✅ System gotowy!\n\n");
 
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
@@ -216,9 +250,12 @@ int main(void) {
 
 #if ENABLE_WIFI
     uint32_t last_wifi_status_print = last_read;
-
     int last_status = -999;
     uint32_t last_ip_raw = 0;
+    bool wifi_connected = false;  // Dodana brakująca zmienna
+    int last_rssi = 0;            // Dodana brakująca zmienna
+    int recovery_attempts_count = 0; // Dodana brakująca zmienna
+#endif
 
     struct tm now_tm;
     struct bme280_data bme_data;
