@@ -16,27 +16,10 @@
 #include "lvgl_ui/screen/main_screen.h"
 
 #ifndef ENABLE_WIFI
-#ifdef TEMP_DISABLE_WIFI
-#if TEMP_DISABLE_WIFI
-#define ENABLE_WIFI 0
-#else
 #define ENABLE_WIFI 1
 #endif
-#else
-#define ENABLE_WIFI 1
-#endif
-#endif
-
 #ifndef ENABLE_HTTP_CLIENT
-#ifdef TEMP_DISABLE_WIFI
-#if TEMP_DISABLE_WIFI
-#define ENABLE_HTTP_CLIENT 0
-#else
 #define ENABLE_HTTP_CLIENT 1
-#endif
-#else
-#define ENABLE_HTTP_CLIENT 1
-#endif
 #endif
 
 #if ENABLE_WIFI
@@ -66,7 +49,7 @@
 #endif
 
 #ifndef HB_HOST
-#define HB_HOST "192.168.55.117"
+#define HB_HOST "192.168.55.119"
 #endif
 #ifndef HB_PORT
 #define HB_PORT 8000
@@ -294,10 +277,8 @@ static void cyw43_monitor_errors(void) {
 }
 
 // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ HTTP/Sync ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
-#if ENABLE_WIFI && ENABLE_HTTP_CLIENT
 static uint32_t last_http_post = 0;
 static bool     http_target_logged = false;
-#endif
 
 // Cache backendu
 static float g_last_backend_set_c = NAN;  
@@ -314,13 +295,11 @@ static uint32_t local_override_start_ms = 0;
 static volatile float g_pending_setpoint = NAN;
 static volatile bool  g_pending_get_request = false;
 
-#if ENABLE_WIFI
-// Status połączenia
+// Status po┼é─ůczenia
 static bool wifi_connected = false;
 static int  last_rssi = 0;
 static uint32_t last_recovery_attempt = 0;
 static int recovery_attempts_count = 0;
-#endif
 
 // Parametry konfiguracyjne
 #define SERVER_CHECK_INTERVAL_MS    5000   // Sprawdzanie serwera co 5s (dla test├│w)
@@ -401,7 +380,7 @@ static void startup_sync_with_server(void) {
         main_screen_show_status("Po┼é─ůczono z serwerem", false);
         printf("[STARTUP] main_screen_show_status zako┼äczone\n");
         
-        printf("[STARTUP] Pobrano ustawienia: temp=%.1f°C, source='%s'\n", 
+        printf("[STARTUP] Pobrano ustawienia: temp=%.1f┬░C, source='%s'\n", 
                settings.target_temp_c, settings.last_source);
     } else {
         main_screen_show_status("B┼é─ůd komunikacji - pracuj─Ö offline", true);
@@ -436,7 +415,7 @@ static void send_reading_now(void) {
     if (pst == HB_HTTP_OK) {
         main_screen_show_notification("Wys┼éano do aplikacji", 2000);
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
-        printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
+        printf("[NET] POST reading: temp=%.1f┬░C, setpoint=%.1f┬░C\n", t, set_c);
     } else {
         main_screen_show_status("Nie uda┼éo si─Ö wys┼éa─ç danych", true);
         printf("[NET] POST reading failed: %d\n", (int)pst);
@@ -454,7 +433,7 @@ static bool try_direct_set_temperature(float new_target) {
     if (st == HB_HTTP_OK) {
         main_screen_show_notification("Temperatura zaktualizowana", 2000);
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
-        printf("[NET] PUT settings: target=%.1f°C\n", new_target);
+        printf("[NET] PUT settings: target=%.1f┬░C\n", new_target);
         return true;
     } else {
         printf("[NET] PUT settings failed: %d\n", (int)st);
@@ -472,7 +451,7 @@ void heatbeat_on_target_temp_changed(float new_target) {
     local_override_until_ms = now + LOCAL_OVERRIDE_WINDOW_MS;
     local_override_start_ms = now;
     
-    printf("[LOCAL] Zmiana temperatury: %.1f°C (ochrona do %ums)\n", 
+    printf("[LOCAL] Zmiana temperatury: %.1f┬░C (ochrona do %ums)\n", 
            new_target, (unsigned)local_override_until_ms);
 
     // 2) Spr├│buj bezpo┼Ťredniego ustawienia (PUT endpoint)
@@ -481,7 +460,7 @@ void heatbeat_on_target_temp_changed(float new_target) {
     // 3) Je┼Ťli PUT si─Ö nie uda┼é, zapisz jako pending i wy┼Ťlij przez reading
     if (!put_success) {
         g_pending_setpoint = new_target;
-        main_screen_show_notification("Wysyłanie...", 1500);
+        main_screen_show_notification("Wysy┼éanie...", 1500);
         main_screen_set_notification_time(now + 1500);
         
         // Natychmiastowa pr├│ba przez POST reading
@@ -492,21 +471,15 @@ void heatbeat_on_target_temp_changed(float new_target) {
     g_pending_get_request = true;
 }
 
-// Funkcje dodatkowe do obsługi błędów i logowania
+// Funkcje dodatkowe do obs┼éugi b┼é─Öd├│w i logowania
 static void log_system_status(void) {
-#if ENABLE_WIFI
     printf("[STATUS] WiFi: %s, Backend cache: %s, Local override: %s\n", 
            wifi_connected ? "Connected" : "Disconnected",
            g_have_backend_cache ? "Yes" : "No",
            local_override_active ? "Active" : "Inactive");
-#else
-    printf("[STATUS] WiFi: Disabled, Backend cache: %s, Local override: %s\n", 
-           g_have_backend_cache ? "Yes" : "No",
-           local_override_active ? "Active" : "Inactive");
-#endif
     
     if (g_have_backend_cache) {
-        printf("[STATUS] Backend: temp=%.1f°C, source='%s'\n", 
+        printf("[STATUS] Backend: temp=%.1f┬░C, source='%s'\n", 
                g_last_backend_set_c, g_last_backend_source);
     }
 }
@@ -514,7 +487,7 @@ static void log_system_status(void) {
 // Funkcja do retry operacji
 static void retry_failed_operations(void) {
     if (!isnan(g_pending_setpoint) && have_ip_up()) {
-        printf("[RETRY] Ponowna próba wysłania pending setpoint: %.1f°C\n", g_pending_setpoint);
+        printf("[RETRY] Ponowna pr├│ba wys┼éania pending setpoint: %.1f┬░C\n", g_pending_setpoint);
         send_reading_now();
     }
 }
@@ -531,10 +504,7 @@ int main(void) {
     printf("\r\n=== HeatBeat-Pico start ===\r\n");
     print_free_ram("Boot");
 
-#if ENABLE_WIFI
     bool wifi_ok = false;
-#endif
-
 #if ENABLE_WIFI
     {
         absolute_time_t wifi_deadline = make_timeout_time_ms(20000); // Zwi─Ökszony timeout
@@ -612,10 +582,8 @@ int main(void) {
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
     uint32_t last_bme_print = last_read;
-#if ENABLE_WIFI && ENABLE_HTTP_CLIENT
     uint32_t last_server_check = 0;  // Natychmiastowe pierwsze sprawdzenie
     uint32_t last_heartbeat = last_read;
-#endif
 
 #if ENABLE_WIFI
     uint32_t last_wifi_status_print = last_read;
@@ -652,24 +620,20 @@ int main(void) {
                 extern void update_labels(void); update_labels();
 
                 if (now - last_bme_print > 10000) {
-                    printf("[BME] T=%.2f°C RH=%d%% P=%.2f hPa\n", current_temp, humidity, pressure/100.0f);
+                    printf("[BME] T=%.2f┬░C RH=%d%% P=%.2f hPa\n", current_temp, humidity, pressure/100.0f);
                     last_bme_print = now;
                 }
             }
             last_read = now;
         }
 
-        // Aktualizacja timerów UI
+        // Aktualizacja timer├│w UI
         main_screen_update_timers_with_time(now);
-        
-        // Sprawdzenie auto-lock ekranu - ważne dla blokady ekranu
-        extern void check_auto_lock(void);
-        check_auto_lock();
 
         // Aktualizacja UI z cache (tylko raz po starcie)
         static bool ui_cache_applied = false;
         if (!ui_cache_applied && g_have_backend_cache) {
-            printf("[UI] Aktualizuje UI z cache: temp=%.1f°C\n", g_last_backend_set_c);
+            printf("[UI] Aktualizuj─Ö UI z cache: temp=%.1f┬░C\n", g_last_backend_set_c);
             main_screen_set_target_c(g_last_backend_set_c);
             ui_cache_applied = true;
         }
@@ -778,12 +742,12 @@ int main(void) {
                                           strcmp(settings.last_source, g_last_backend_source) != 0;
                     
                     if (settings_changed) {
-                        printf("[NET] Nowe ustawienia: temp=%.1f°C, source='%s' (ui=%.1f°C)\n", 
+                        printf("[NET] Nowe ustawienia: temp=%.1f┬░C, source='%s' (ui=%.1f┬░C)\n", 
                                settings.target_temp_c, settings.last_source, ui_now);
-                        printf("[NET] Cache: temp=%.1f°C, source='%s', have_cache=%d\n",
+                        printf("[NET] Cache: temp=%.1f┬░C, source='%s', have_cache=%d\n",
                                g_last_backend_set_c, g_last_backend_source, g_have_backend_cache);
                     } else {
-                        printf("[NET] Brak zmian: temp=%.1f°C, source='%s' (ui=%.1f°C)\n", 
+                        printf("[NET] Brak zmian: temp=%.1f┬░C, source='%s' (ui=%.1f┬░C)\n", 
                                settings.target_temp_c, settings.last_source, ui_now);
                     }
 
@@ -794,7 +758,7 @@ int main(void) {
                             local_override_active = false;
                             main_screen_show_notification("Temperatura potwierdzona", 2000);
                             main_screen_set_notification_time(now + 2000);
-                            printf("[SYNC] Serwer potwierdził %.1f°C\n", settings.target_temp_c);
+                            printf("[SYNC] Serwer potwierdzi┼é %.1f┬░C\n", settings.target_temp_c);
                         } else {
                             printf("[SYNC] Ignoruj─Ö GET podczas lokalnej zmiany (serwer=%.1f, local=%.1f)\n",
                                    settings.target_temp_c, local_override_value);
@@ -814,7 +778,7 @@ int main(void) {
                             if (source_changed_to_app || temp_differs) {
                                 printf("[SYNC] Zmiana z aplikacji wykryta - source_changed=%d, temp_differs=%d\n", 
                                        source_changed_to_app, temp_differs);
-                                printf("[SYNC] Anuluj lokalną ochronę - zmiana z aplikacji: %.1f°C\n", settings.target_temp_c);
+                                printf("[SYNC] Anuluj lokaln─ů ochron─Ö - zmiana z aplikacji: %.1f┬░C\n", settings.target_temp_c);
                                 local_override_active = false;
                                 local_override_until_ms = 0;
                                 main_screen_set_target_c_from_server(settings.target_temp_c, "app");
@@ -831,7 +795,7 @@ int main(void) {
                                 // Inna zmiana zewn─Ötrzna - tylko je┼Ťli r├│┼╝ni si─Ö znacz─ůco
                                 main_screen_set_target_c(settings.target_temp_c);
                                 main_screen_show_notification("Ustawienia zmienione zdalnie", 2000);
-                                printf("[SYNC] Temperatura zaktualizowana: %.1f°C\n", settings.target_temp_c);
+                                printf("[SYNC] Temperatura zaktualizowana: %.1f┬░C\n", settings.target_temp_c);
                             }
                         }
                     }
@@ -870,7 +834,7 @@ int main(void) {
                         hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
                                                                    t, rh, p, set_c, CONNECTION_TIMEOUT_MS);
                         if (pst == HB_HTTP_OK) {
-                            printf("[NET] Heartbeat: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
+                            printf("[NET] Heartbeat: temp=%.1f┬░C, setpoint=%.1f┬░C\n", t, set_c);
                         } else {
                             printf("[NET] POST /device/%d/reading failed: %d\n", HB_DEVICE_ID, (int)pst);
                         }
@@ -901,23 +865,21 @@ int main(void) {
             log_system_status();
             retry_failed_operations();
             
-#if ENABLE_WIFI
-            // Sprawdź WiFi reconnect jeśli nie ma połączenia
+            // Sprawd┼║ WiFi reconnect je┼Ťli nie ma po┼é─ůczenia
             if (!wifi_connected && !have_ip_up()) {
-                printf("[WIFI] Próba automatycznego reconnect...\n");
-                main_screen_show_status("Łączenie z WiFi...", false);
+                printf("[WIFI] Pr├│ba automatycznego reconnect...\n");
+                main_screen_show_status("┼ü─ůczenie z WiFi...", false);
                 if (wifi_connect_and_log()) {
                     wifi_connected = true;
                     int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
                     main_screen_update_wifi_status(true, rssi);
-                    printf("[WIFI] Automatyczny reconnect pomyślny\n");
-                    main_screen_show_status("Połączono z WiFi", false);
+                    printf("[WIFI] Automatyczny reconnect pomy┼Ťlny\n");
+                    main_screen_show_status("Po┼é─ůczono z WiFi", false);
                 } else {
                     printf("[WIFI] Automatyczny reconnect nieudany\n");
-                    main_screen_show_status("Brak połączenia WiFi", true);
+                    main_screen_show_status("Brak po┼é─ůczenia WiFi", true);
                 }
             }
-#endif
             
             last_system_check = now;
         }

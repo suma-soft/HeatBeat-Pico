@@ -58,8 +58,7 @@ void update_screen_locked_state(void) {
         lv_obj_set_style_text_color(label_humi, lv_color_make(60, 60, 60), LV_PART_MAIN);
         lv_obj_set_style_text_color(label_pres, lv_color_make(60, 60, 60), LV_PART_MAIN);
         
-        // Pokaż komunikat o odblokowaniu na dłużej
-        main_screen_show_notification("3x dotknij aby odblokować", 0); // 0 = nie ukrywaj automatycznie
+        // NIE pokazuj komunikatu od razu - pokaże się po pierwszym dotknięciu
     } else {
         printf("[UI] Setting UNLOCKED state\n");
         // Ekran odblokowany - czarne tło, białe napisy, pokaż suwak i status
@@ -100,10 +99,19 @@ void handle_screen_tap(void) {
         
         last_tap_time = now;
         
-        // Pokaż feedback o liczbie dotknięć na dłużej
-        char tap_feedback[32];
-        snprintf(tap_feedback, sizeof(tap_feedback), "Dotknięcie %d/3", tap_count);
-        main_screen_show_notification(tap_feedback, 3000); // 3 sekundy zamiast 1
+        // Pokaż feedback z odliczaniem pozostałych dotknięć
+        char tap_feedback[48];
+        int remaining = 3 - tap_count;
+        if (remaining > 0) {
+            if (remaining == 1) {
+                snprintf(tap_feedback, sizeof(tap_feedback), "Ostatnie dotknięcie\naby odblokować");
+            } else {
+                snprintf(tap_feedback, sizeof(tap_feedback), "%d dotknięcia pozostały", remaining);
+            }
+        } else {
+            snprintf(tap_feedback, sizeof(tap_feedback), "Odblokowywanie...");
+        }
+        main_screen_show_notification(tap_feedback, 3000);
         
         if (tap_count >= 3) {
             // Odblokuj ekran
@@ -402,10 +410,9 @@ void main_screen_init(void)
     lv_obj_align(label_pres, LV_ALIGN_TOP_MID, 0, 180); // Przesunięte z 160 na 180
 
     // --- POWIADOMIENIA ---
-    // --- POWIADOMIENIA ---
     label_notification = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_notification, lv_color_make(255, 255, 100), LV_PART_MAIN);
-    lv_obj_align(label_notification, LV_ALIGN_BOTTOM_MID, 0, -50);
+    lv_obj_align(label_notification, LV_ALIGN_CENTER, 0, 80); // Wyżej - poniżej środka ekranu
     lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
 
     // --- IKONY STATUSU ---

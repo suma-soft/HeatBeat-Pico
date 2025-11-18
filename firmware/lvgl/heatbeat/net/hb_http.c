@@ -4,10 +4,25 @@
 
 #include "hb_http.h"
 #include "hb_proto.h"
-#include "pico/cyw43_arch.h"
 
+#ifndef ENABLE_WIFI
+#ifdef TEMP_DISABLE_WIFI
+#if TEMP_DISABLE_WIFI
+#define ENABLE_WIFI 0
+#else
+#define ENABLE_WIFI 1
+#endif
+#else
+#define ENABLE_WIFI 1
+#endif
+#endif
+
+#if ENABLE_WIFI
+#include "pico/cyw43_arch.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/tcp.h"
+#endif
+
 #include "pico/time.h"
 #include <string.h>
 #include <stdio.h>
@@ -15,6 +30,8 @@
 #ifndef HB_HTTP_RECV_BUF_MAX
 #define HB_HTTP_RECV_BUF_MAX 1024
 #endif
+
+#if ENABLE_WIFI
 
 typedef enum {
     ST_IDLE = 0,
@@ -373,7 +390,50 @@ hb_http_status_t hb_http_post_reading(
         .resp_len = 0,
     };
 
-    // Dla POST nie wymagamy parsowania body – liczy się 200 OK; lwIP zamknie nam gniazdo, odbiór i tak wpadnie do bufora.
+    // Dla POST nie wyragamy parsowania body – liczy się 200 OK; lwIP zamknie nam gniazdo, odbiór i tak wpadnie do bufora.
     hb_http_status_t st = run_client(&c, &ip, port, timeout_ms);
     return st;
 }
+
+#else // !ENABLE_WIFI
+
+// Stub implementations when WiFi is disabled
+hb_http_status_t hb_http_get_settings(
+    const char *host, uint16_t port, int device_id,
+    hb_settings_response_t *out_settings, uint32_t timeout_ms)
+{
+    (void)host; (void)port; (void)device_id; (void)out_settings; (void)timeout_ms;
+    printf("[HTTP] WiFi disabled - skipping hb_http_get_settings\n");
+    return HB_HTTP_ERR_CONNECT;
+}
+
+hb_http_status_t hb_http_get_settings_target_temp(
+    const char *host, uint16_t port, int device_id,
+    float *out_target_temp, uint32_t timeout_ms)
+{
+    (void)host; (void)port; (void)device_id; (void)out_target_temp; (void)timeout_ms;
+    printf("[HTTP] WiFi disabled - skipping hb_http_get_settings_target_temp\n");
+    return HB_HTTP_ERR_CONNECT;
+}
+
+hb_http_status_t hb_http_set_settings_target_temp(
+    const char *host, uint16_t port, int device_id,
+    float target_temp, uint32_t timeout_ms)
+{
+    (void)host; (void)port; (void)device_id; (void)target_temp; (void)timeout_ms;
+    printf("[HTTP] WiFi disabled - skipping hb_http_set_settings_target_temp\n");
+    return HB_HTTP_ERR_CONNECT;
+}
+
+hb_http_status_t hb_http_post_reading(
+    const char *host, uint16_t port, int device_id,
+    float temperature_c, float humidity_pct, float pressure_hpa,
+    float setpoint_c, uint32_t timeout_ms)
+{
+    (void)host; (void)port; (void)device_id; (void)temperature_c; 
+    (void)humidity_pct; (void)pressure_hpa; (void)setpoint_c; (void)timeout_ms;
+    printf("[HTTP] WiFi disabled - skipping hb_http_post_reading\n");
+    return HB_HTTP_ERR_CONNECT;
+}
+
+#endif // ENABLE_WIFI
