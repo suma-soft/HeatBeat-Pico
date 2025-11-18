@@ -111,7 +111,7 @@ void handle_screen_tap(void) {
         } else {
             snprintf(tap_feedback, sizeof(tap_feedback), "Odblokowywanie...");
         }
-        main_screen_show_notification(tap_feedback, 3000);
+        main_screen_show_notification(tap_feedback, 5000); // Wydłużone z 3s na 5s
         
         if (tap_count >= 3) {
             // Odblokuj ekran
@@ -130,7 +130,7 @@ void handle_screen_tap(void) {
             update_screen_locked_state();
             printf("[UI] update_screen_locked_state() completed\n");
             
-            main_screen_show_notification("Ekran odblokowany!", 3000); // 3 sekundy zamiast 2
+            main_screen_show_notification("Ekran odblokowany!", 4000); // Wydłużone na 4 sekundy
             printf("[UI] Unlock notification shown\n");
         }
     } else {
