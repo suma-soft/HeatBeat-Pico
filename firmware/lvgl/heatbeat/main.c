@@ -66,7 +66,7 @@
 #endif
 
 #ifndef HB_HOST
-#define HB_HOST "192.168.55.117"
+#define HB_HOST "192.168.55.118"
 #endif
 #ifndef HB_PORT
 #define HB_PORT 8000
@@ -108,14 +108,14 @@ static inline bool have_ip_up(void) { return false; }
 #if ENABLE_WIFI
 static int try_wifi_auth(uint32_t auth)
 {
-    printf("[WiFi] pr├│ba po┼é─ůczenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
+    printf("[WiFi] proba polaczenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
     
     // Dodatkowa stabilizacja przed pr├│b─ů po┼é─ůczenia
     sleep_ms(100);
     
-    int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth, 25000); // Zwi─Ökszony timeout
+    int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth, 25000); // Oryginalny timeout jak w working version
     if (rc) { 
-        printf("[WiFi] NIE po┼é─ůczono (rc=%d)\n", rc); 
+        printf("[WiFi] NIE polaczono (rc=%d)\n", rc); 
         
         // Sprawd┼║ czy to b┼é─ůd CYW43
         if (rc == PICO_ERROR_GENERIC || rc == PICO_ERROR_TIMEOUT) {
@@ -131,7 +131,7 @@ static int try_wifi_auth(uint32_t auth)
         return -1; 
     }
 
-    printf("[WiFi] Po┼é─ůczono z \"%s\"  IP:", WIFI_SSID);
+    printf("[WiFi] Polaczono z \"%s\"  IP:", WIFI_SSID);
     print_ip4(netif_ip4_addr(nif));
     printf("  GW: "); print_ip4(netif_ip4_gw(nif));
     printf("  MASK: "); print_ip4(netif_ip4_netmask(nif));
@@ -150,18 +150,18 @@ static bool wifi_connect_and_log(void) {
     
     int init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
     if (init_result != 0) {
-        printf("[CYW43] B┼é─ůd inicjalizacji: %d\n", init_result);
+        printf("[CYW43] Blad inicjalizacji: %d\n", init_result);
         return false;
     }
     
-    printf("[CYW43] Inicjalizacja pomy┼Ťlna\n");
+    printf("[CYW43] Inicjalizacja pomyslna\n");
     
     // Stabilizacja po inicjalizacji
     sleep_ms(500);
     
     cyw43_arch_enable_sta_mode();
     
-    // Dodatkowa stabilizacja po w┼é─ůczeniu trybu STA
+    // Dodatkowa stabilizacja po wlaczeniu trybu STA
     sleep_ms(200);
     
     const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK, CYW43_AUTH_OPEN };
@@ -169,7 +169,7 @@ static bool wifi_connect_and_log(void) {
         if (try_wifi_auth(try_auths[i]) == 0) return true; 
         sleep_ms(1000); // Zwi─Ökszone op├│┼║nienie mi─Ödzy pr├│bami
     }
-    printf("[WiFi] Nie uda┼éo si─Ö po┼é─ůczy─ç z \"%s\" ÔÇô sprawd┼║ has┼éo/SSID.\n", WIFI_SSID);
+    printf("[WiFi] Nie udalo sie polaczyc z \"%s\" - sprawdz haslo/SSID.\n", WIFI_SSID);
     return false;
 }
 static void wifi_status_print_once(void) {
@@ -197,7 +197,7 @@ static inline void wifi_status_print_once(void) {}
 // Funkcja do obs┼éugi b┼é─Öd├│w CYW43 i recovery
 static bool cyw43_error_recovery(void) {
 #if ENABLE_WIFI
-    printf("[CYW43] Wykryto b┼é─ůd - pr├│ba recovery...\n");
+    printf("[CYW43] Wykryto blad - proba recovery...\n");
     
     // Spr├│buj mi─Ökki reset
     cyw43_arch_deinit();
@@ -205,7 +205,7 @@ static bool cyw43_error_recovery(void) {
     
     // Ponowna inicjalizacja
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND) == 0) {
-        printf("[CYW43] Recovery pomy┼Ťlne - pr├│ba ponownego po┼é─ůczenia\n");
+        printf("[CYW43] Recovery pomyslne - proba ponownego polaczenia\n");
         cyw43_arch_enable_sta_mode();
         sleep_ms(500);
         
@@ -213,7 +213,7 @@ static bool cyw43_error_recovery(void) {
         const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK };
         for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) { 
             if (try_wifi_auth(try_auths[i]) == 0) {
-                printf("[CYW43] Recovery + reconnect pomy┼Ťlne\n");
+                printf("[CYW43] Recovery + reconnect pomyslne\n");
                 return true;
             }
             sleep_ms(1000);
@@ -347,8 +347,8 @@ __attribute__((weak)) void  main_screen_set_notification_time(uint32_t time) { (
 // Startup - pobierz ustawienia z serwera
 static void startup_sync_with_server(void) {
     if (!have_ip_up()) {
-        main_screen_show_status("Brak po┼é─ůczenia z serwerem", true);
-        printf("[STARTUP] Brak po┼é─ůczenia IP - pomijam sync\n");
+        main_screen_show_status("Brak polaczenia", true);
+        printf("[STARTUP] Brak polaczenia IP - pomijam sync\n");
         return;
     }
     
@@ -362,7 +362,7 @@ static void startup_sync_with_server(void) {
     }
     
     printf("[STARTUP] Rozpoczynam synchronizacj─Ö z serwerem...\n");
-    main_screen_show_status("┼ü─ůczenie z serwerem...", false);
+            main_screen_show_status("Laczenie...", false);
     print_free_ram("Przed HTTP");
     
     // Dodatkowe op├│┼║nienie dla stabilno┼Ťci po┼é─ůczenia
@@ -397,9 +397,9 @@ static void startup_sync_with_server(void) {
         // main_screen_set_target_c(settings.target_temp_c);
         // printf("[STARTUP] main_screen_set_target_c zako┼äczone\n");
         
-        printf("[STARTUP] Wywo┼éuj─Ö main_screen_show_status...\n");
-        main_screen_show_status("Po┼é─ůczono z serwerem", false);
-        printf("[STARTUP] main_screen_show_status zako┼äczone\n");
+        printf("[STARTUP] Wywoluje main_screen_show_status...\n");
+        main_screen_show_status("Połączono", false);
+        printf("[STARTUP] main_screen_show_status zakonczono\n");
         
         printf("[STARTUP] Pobrano ustawienia: temp=%.1f°C, source='%s'\n", 
                settings.target_temp_c, settings.last_source);
@@ -452,7 +452,7 @@ static bool try_direct_set_temperature(float new_target) {
                                                           HB_DEVICE_ID, new_target, 
                                                           CONNECTION_TIMEOUT_MS);
     if (st == HB_HTTP_OK) {
-        main_screen_show_notification("Temperatura zaktualizowana", 2000);
+        main_screen_show_notification("Temperatura\nzaktualizowana", 2000);
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
         printf("[NET] PUT settings: target=%.1f°C\n", new_target);
         return true;
@@ -481,7 +481,7 @@ void heatbeat_on_target_temp_changed(float new_target) {
     // 3) Je┼Ťli PUT si─Ö nie uda┼é, zapisz jako pending i wy┼Ťlij przez reading
     if (!put_success) {
         g_pending_setpoint = new_target;
-        main_screen_show_notification("Wysyłanie...", 1500);
+        main_screen_show_notification("Wysylanie...", 1500);
         main_screen_set_notification_time(now + 1500);
         
         // Natychmiastowa pr├│ba przez POST reading
@@ -546,7 +546,7 @@ int main(void) {
         
         while (absolute_time_diff_us(get_absolute_time(), wifi_deadline) > 0 && wifi_attempts < max_wifi_attempts) { 
             wifi_attempts++;
-            printf("[WIFI] Pr├│ba po┼é─ůczenia %d/%d\n", wifi_attempts, max_wifi_attempts);
+            printf("[WIFI] Proba polaczenia %d/%d\n", wifi_attempts, max_wifi_attempts);
             
             wifi_ok = wifi_connect_and_log(); 
             if (wifi_ok) {
@@ -792,7 +792,7 @@ int main(void) {
                         // W trakcie lokalnej zmiany - sprawd┼║ czy serwer potwierdzi┼é
                         if (nearly_equal(settings.target_temp_c, local_override_value, 0.05f)) {
                             local_override_active = false;
-                            main_screen_show_notification("Temperatura potwierdzona", 2000);
+                            main_screen_show_notification("Temperatura\npotwierdzona", 2000);
                             main_screen_set_notification_time(now + 2000);
                             printf("[SYNC] Serwer potwierdził %.1f°C\n", settings.target_temp_c);
                         } else {
@@ -842,9 +842,9 @@ int main(void) {
                     g_last_backend_source[sizeof(g_last_backend_source) - 1] = '\0';
                     g_have_backend_cache = true;
                     
-                    main_screen_show_status("Po┼é─ůczono z serwerem", false);
+                    main_screen_show_status("Połączono", false);
                 } else {
-                    main_screen_show_status("B┼é─ůd komunikacji z serwerem", true);
+                    main_screen_show_status("Blad komunikacji", true);
                     printf("[NET] GET /device/%d/settings failed: %d\n", HB_DEVICE_ID, (int)gst);
                 }
                 

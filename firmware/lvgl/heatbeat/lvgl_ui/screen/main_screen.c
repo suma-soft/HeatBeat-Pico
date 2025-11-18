@@ -19,6 +19,7 @@ lv_obj_t *label_temp;
 lv_obj_t *label_humi;
 lv_obj_t *label_target;
 lv_obj_t *label_status;        // Status komunikacji
+lv_obj_t *status_dot;          // Kropka statusu dla zablokowanego ekranu
 lv_obj_t *label_notification; // Powiadomienia
 lv_obj_t *icon_wifi;          // Ikona WiFi
 lv_obj_t *icon_phone;         // Ikona telefonu
@@ -29,6 +30,9 @@ static int target_temp = 22;
 
 // Timer dla powiadomień
 static uint32_t notification_hide_time = 0;
+
+// Status połączenia
+static bool connection_status = false; // false = brak połączenia, true = połączono
 
 // Blokada ekranu
 static bool screen_locked = true;  // Domyślnie zablokowany
@@ -50,7 +54,20 @@ void update_screen_locked_state(void) {
         lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);
         lv_obj_add_flag(arc_control, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(arc_control, LV_OBJ_FLAG_CLICKABLE); // Wyłącz klikanie arc w trybie locked
-        lv_obj_add_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Ukryj status połączenia
+        lv_obj_add_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Ukryj status tekstowy
+        
+        // Pokaż symbol statusu
+        if (status_dot) {
+            lv_obj_clear_flag(status_dot, LV_OBJ_FLAG_HIDDEN);
+            // Ustaw symbol i kolor na podstawie statusu połączenia
+            if (connection_status) {
+                lv_label_set_text(status_dot, "@"); // @ dla połączenia
+                lv_obj_set_style_text_color(status_dot, lv_color_make(0, 100, 0), LV_PART_MAIN); // Ciemny zielony
+            } else {
+                lv_label_set_text(status_dot, "X"); // X dla braku połączenia
+                lv_obj_set_style_text_color(status_dot, lv_color_make(100, 0, 0), LV_PART_MAIN); // Ciemny czerwony
+            }
+        }
         
         // Ciemno szary kolor tekstu dla temperatury
         lv_obj_set_style_text_color(label_temp, lv_color_make(80, 80, 80), LV_PART_MAIN);
@@ -65,7 +82,12 @@ void update_screen_locked_state(void) {
         lv_obj_set_style_bg_color(ui_main_screen, lv_color_black(), LV_PART_MAIN);
         lv_obj_clear_flag(arc_control, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(arc_control, LV_OBJ_FLAG_CLICKABLE); // Włącz klikanie arc w trybie unlocked
-        lv_obj_clear_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Pokaż status połączenia
+        lv_obj_clear_flag(label_status, LV_OBJ_FLAG_HIDDEN); // Pokaż status tekstowy
+        
+        // Ukryj symbol statusu
+        if (status_dot) {
+            lv_obj_add_flag(status_dot, LV_OBJ_FLAG_HIDDEN);
+        }
         
         // Białe kolory tekstu
         lv_obj_set_style_text_color(label_temp, lv_color_white(), LV_PART_MAIN);
@@ -111,7 +133,7 @@ void handle_screen_tap(void) {
         } else {
             snprintf(tap_feedback, sizeof(tap_feedback), "Odblokowywanie...");
         }
-        main_screen_show_notification(tap_feedback, 5000); // Wydłużone z 3s na 5s
+        main_screen_show_notification(tap_feedback, 7000); // Wydłużone na 7s - więcej czasu na odczytanie
         
         if (tap_count >= 3) {
             // Odblokuj ekran
@@ -130,7 +152,7 @@ void handle_screen_tap(void) {
             update_screen_locked_state();
             printf("[UI] update_screen_locked_state() completed\n");
             
-            main_screen_show_notification("Ekran odblokowany!", 4000); // Wydłużone na 4 sekundy
+            main_screen_show_notification("Ekran odblokowany!", 6000); // Wydłużone na 6 sekund - więcej czasu na odczytanie
             printf("[UI] Unlock notification shown\n");
         }
     } else {
@@ -299,12 +321,42 @@ static void slider_target_temp_event_cb(lv_event_t* e) {
 // FUNKCJE STATUSU I POWIADOMIEŃ
 // ─────────────────────────────
 void main_screen_show_status(const char *message, bool is_error) {
+    // Aktualizuj status połączenia na podstawie komunikatu
+    if (strstr(message, "Połączono") || strstr(message, "połączono") || strstr(message, "Polaczono") || strstr(message, "polaczono")) {
+        connection_status = true;
+    } else if (strstr(message, "Brak") || strstr(message, "Błąd") || strstr(message, "Blad") || strstr(message, "blad") || strstr(message, "brak") || 
+               strstr(message, "Łączenie") || strstr(message, "Lączenie") || strstr(message, "lączenie") || strstr(message, "laczenie")) {
+        connection_status = false; // Łączenie też traktujemy jako brak połączenia (czerwona kropka)
+    }
+    
     if (label_status) {
         lv_label_set_text(label_status, message);
         lv_obj_set_style_text_color(label_status, 
             is_error ? lv_color_make(255, 100, 100) : lv_color_make(100, 255, 100), 
             LV_PART_MAIN);
-        lv_obj_clear_flag(label_status, LV_OBJ_FLAG_HIDDEN);
+        
+        // Pokaż status tekstowy tylko gdy ekran jest odblokowany
+        if (!screen_locked) {
+            lv_obj_clear_flag(label_status, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    
+    // Aktualizuj symbol na zablokowanym ekranie
+    if (status_dot) {
+        if (screen_locked) {
+            // Pokaż symbol z odpowiednim kolorem i znakiem
+            lv_obj_clear_flag(status_dot, LV_OBJ_FLAG_HIDDEN);
+            if (connection_status) {
+                lv_label_set_text(status_dot, "@"); // @ dla połączenia
+                lv_obj_set_style_text_color(status_dot, lv_color_make(0, 100, 0), LV_PART_MAIN); // Ciemny zielony
+            } else {
+                lv_label_set_text(status_dot, "X"); // X dla braku połączenia
+                lv_obj_set_style_text_color(status_dot, lv_color_make(100, 0, 0), LV_PART_MAIN); // Ciemny czerwony
+            }
+        } else {
+            // Ukryj symbol gdy ekran odblokowany
+            lv_obj_add_flag(status_dot, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -392,8 +444,8 @@ void main_screen_init(void)
     // --- STATUS POŁĄCZENIA NA GÓRZE ---
     label_status = lv_label_create(ui_main_screen);
     lv_obj_set_style_text_color(label_status, lv_color_make(200, 200, 200), LV_PART_MAIN);
-    lv_obj_align(label_status, LV_ALIGN_TOP_MID, 0, 45); // Przesunięte z 25 na 45
-    lv_label_set_text(label_status, "Łączenie...");
+    lv_obj_align(label_status, LV_ALIGN_TOP_MID, 0, 40); // Wyżej, żeby nie zachodzić na temperaturę
+    lv_label_set_text(label_status, "Laczenie...");
 
     // --- CZUJNIKI PONIŻEJ ---
     label_temp = lv_label_create(ui_main_screen);
@@ -425,6 +477,13 @@ void main_screen_init(void)
     lv_obj_set_style_text_color(icon_phone, lv_color_make(100, 150, 255), LV_PART_MAIN);
     lv_obj_align(icon_phone, LV_ALIGN_TOP_RIGHT, -50, 10);
     lv_obj_add_flag(icon_phone, LV_OBJ_FLAG_HIDDEN);
+
+    // --- SYMBOL STATUSU POŁĄCZENIA ---
+    status_dot = lv_label_create(ui_main_screen);
+    lv_label_set_text(status_dot, "X"); // Domyślnie X (brak połączenia)
+    lv_obj_set_style_text_color(status_dot, lv_color_make(100, 0, 0), LV_PART_MAIN); // Domyślnie czerwony
+    lv_obj_align(status_dot, LV_ALIGN_TOP_MID, 0, 40); // Ta sama pozycja co status - wyśrodkowana
+    lv_obj_add_flag(status_dot, LV_OBJ_FLAG_HIDDEN); // Domyślnie ukryta
 
     // --- ŁUK / ARC ---
     arc_control = lv_arc_create(ui_main_screen);
