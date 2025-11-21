@@ -110,6 +110,12 @@ void handle_screen_tap(void) {
     printf("[UI] Screen tap detected, locked=%d\n", screen_locked ? 1 : 0);
     
     if (screen_locked) {
+        // Natychmiast ukryj poprzedni komunikat przy nowym dotknięciu
+        if (label_notification) {
+            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
+            notification_hide_time = 0;
+        }
+        
         // Sprawdź czy to jest w czasie na potrójne dotknięcie
         if (now - last_tap_time < TAP_TIMEOUT_MS) {
             tap_count++;
@@ -133,7 +139,7 @@ void handle_screen_tap(void) {
         } else {
             snprintf(tap_feedback, sizeof(tap_feedback), "Odblokowywanie...");
         }
-        main_screen_show_notification(tap_feedback, 7000); // Wydłużone na 7s - więcej czasu na odczytanie
+        main_screen_show_notification(tap_feedback, 3000); // 3 sekundy na każdy komunikat
         
         if (tap_count >= 3) {
             // Odblokuj ekran
@@ -152,7 +158,7 @@ void handle_screen_tap(void) {
             update_screen_locked_state();
             printf("[UI] update_screen_locked_state() completed\n");
             
-            main_screen_show_notification("Ekran odblokowany!", 6000); // Wydłużone na 6 sekund - więcej czasu na odczytanie
+            main_screen_show_notification("Ekran odblokowany!", 3000); // 3 sekundy widoczności
             printf("[UI] Unlock notification shown\n");
         }
     } else {
