@@ -4,6 +4,9 @@ extern void heatbeat_on_target_temp_changed(float new_target);
 #include "lv_font_montserrat_28_pl.h"
 #include "lvgl.h"
 
+// Forward declarations
+void main_screen_show_notification_with_time(const char *message, int duration_ms, uint32_t current_time);
+
 // ─────────────────────────────
 // GLOBALNE DANE
 // ─────────────────────────────
@@ -30,6 +33,10 @@ static int target_temp = 22;
 
 // Timer dla powiadomień
 static uint32_t notification_hide_time = 0;
+static uint32_t unlock_final_message_time = 0;
+static uint32_t notification_start_time = 0;
+static int notification_duration_ms = 0;
+static uint32_t current_system_time = 0; // Czas z main.c
 
 // Status połączenia
 static bool connection_status = false; // false = brak połączenia, true = połączono
@@ -39,6 +46,7 @@ static bool screen_locked = true;  // Domyślnie zablokowany
 static int tap_count = 0;
 static uint32_t last_tap_time = 0;
 static const uint32_t TAP_TIMEOUT_MS = 1000; // 1000ms na 3 dotknięcia (więcej czasu)
+static const uint32_t TAP_DEBOUNCE_MS = 100;  // 100ms debounce between taps
 static const uint32_t AUTO_LOCK_MS = 60000; // 60s auto-lock (1 minuta)
 static uint32_t last_activity_time = 0;
 
@@ -96,26 +104,23 @@ void update_screen_locked_state(void) {
         lv_obj_set_style_text_color(label_pres, lv_color_white(), LV_PART_MAIN);
         lv_obj_set_style_text_color(label_status, lv_color_make(200, 200, 200), LV_PART_MAIN);
         
-        // Ukryj komunikat o odblokowaniu
-        if (label_notification) {
-            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
-            notification_hide_time = 0; // Resetuj timer
-        }
+        // Komunikaty odblokowania są teraz kontrolowane przez timer
     }
     printf("[UI] update_screen_locked_state() finished\n");
 }
 
-void handle_screen_tap(void) {
-    uint32_t now = lv_tick_get();
+void handle_screen_tap_with_time(uint32_t now) {
+    // Debouncing - ignoruj zbyt szybkie kolejne dotknięcia
+    static uint32_t last_handle_time = 0;
+    if (now - last_handle_time < TAP_DEBOUNCE_MS) {
+        printf("[UI] Screen tap ignored (debounce)\n");
+        return;
+    }
+    last_handle_time = now;
+    
     printf("[UI] Screen tap detected, locked=%d\n", screen_locked ? 1 : 0);
     
     if (screen_locked) {
-        // Natychmiast ukryj poprzedni komunikat przy nowym dotknięciu
-        if (label_notification) {
-            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
-            notification_hide_time = 0;
-        }
-        
         // Sprawdź czy to jest w czasie na potrójne dotknięcie
         if (now - last_tap_time < TAP_TIMEOUT_MS) {
             tap_count++;
@@ -127,19 +132,17 @@ void handle_screen_tap(void) {
         
         last_tap_time = now;
         
-        // Pokaż feedback z odliczaniem pozostałych dotknięć
-        char tap_feedback[48];
-        int remaining = 3 - tap_count;
-        if (remaining > 0) {
+        // Pokaż feedback z odliczaniem pozostałych dotknięć (tylko jeśli nie ma 3 dotknięć)
+        if (tap_count < 3) {
+            char tap_feedback[48];
+            int remaining = 3 - tap_count;
             if (remaining == 1) {
                 snprintf(tap_feedback, sizeof(tap_feedback), "Ostatnie dotknięcie\naby odblokować");
             } else {
                 snprintf(tap_feedback, sizeof(tap_feedback), "%d dotknięcia pozostały", remaining);
             }
-        } else {
-            snprintf(tap_feedback, sizeof(tap_feedback), "Odblokowywanie...");
+            main_screen_show_notification_with_time(tap_feedback, 5000, now); // Wydłużone z 3s na 5s
         }
-        main_screen_show_notification(tap_feedback, 3000); // 3 sekundy na każdy komunikat
         
         if (tap_count >= 3) {
             // Odblokuj ekran
@@ -158,19 +161,37 @@ void handle_screen_tap(void) {
             update_screen_locked_state();
             printf("[UI] update_screen_locked_state() completed\n");
             
-            main_screen_show_notification("Ekran odblokowany!", 3000); // 3 sekundy widoczności
+            // Pokaż komunikat "Ekran odblokowany!" przez 4 sekundy lub do następnego dotknięcia
+            main_screen_show_notification_with_time("Ekran odblokowany!", 4000, now); // Wydłużone na 4 sekundy
             printf("[UI] Unlock notification shown\n");
         }
     } else {
-        // Ekran odblokowany - resetuj timer auto-lock
+        // Ekran odblokowany - resetuj timer auto-lock i ukryj powiadomienia
         last_activity_time = now;
+        
+        // Ukryj aktywne powiadomienia przy dotknięciu
+        if (label_notification && notification_start_time > 0) {
+            uint32_t elapsed = now - notification_start_time;
+            printf("[NOTIF] TAP-HIDE: elapsed=%lu, duration was=%d\n", elapsed, notification_duration_ms);
+            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
+            notification_start_time = 0;
+            notification_duration_ms = 0;
+            printf("[UI] Notification hidden by tap\n");
+        }
+        
         printf("[UI] Activity timer reset\n");
     }
 }
 
+void handle_screen_tap(void) {
+    // Użyj current_system_time jeśli dostępny, dla spójności z timerem
+    uint32_t now = (current_system_time > 0) ? current_system_time : lv_tick_get();
+    handle_screen_tap_with_time(now);
+}
+
 void check_auto_lock(void) {
     if (!screen_locked) {
-        uint32_t now = lv_tick_get();
+        uint32_t now = (current_system_time > 0) ? current_system_time : lv_tick_get();
         uint32_t time_since_activity = now - last_activity_time;
         
         // Debug tylko jeśli zbliżamy się do auto-lock (ostatnie 5 sekund)
@@ -279,10 +300,15 @@ static void update_arc_color(lv_obj_t *arc, float temperature)
 void screen_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    printf("[UI] Screen event: %d\n", code);
+    printf("[UI] Screen event: %d (PRESSED=%d, RELEASED=%d, CLICKED=%d)\n", 
+           code, LV_EVENT_PRESSED, LV_EVENT_RELEASED, LV_EVENT_CLICKED);
     if (code == LV_EVENT_PRESSED) {
         printf("[UI] Screen pressed event detected\n");
         handle_screen_tap();
+    } else if (code == LV_EVENT_RELEASED) {
+        printf("[UI] Screen released event detected\n");
+    } else if (code == LV_EVENT_CLICKED) {
+        printf("[UI] Screen clicked event detected\n");
     }
 }
 
@@ -370,19 +396,35 @@ void main_screen_set_notification_time(uint32_t time) {
     notification_hide_time = time;
 }
 
-void main_screen_show_notification(const char *message, int duration_ms) {
+void main_screen_show_notification_with_time(const char *message, int duration_ms, uint32_t current_time) {
+    printf("[NOTIF] SHOW REQUEST: '%s' for %dms, now=%lu\n", message, duration_ms, current_time);
+    
     if (label_notification) {
+        printf("[NOTIF] Setting text and clearing hidden flag\n");
         lv_label_set_text(label_notification, message);
         lv_obj_clear_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
         
         if (duration_ms == 0) {
             // 0 oznacza: nie ukrywaj automatycznie
-            notification_hide_time = 0;
+            notification_start_time = 0;
+            notification_duration_ms = 0;
+            printf("[NOTIF] Set permanent notification\n");
         } else {
-            // Ustaw czas ukrycia na podstawie duration_ms
-            notification_hide_time = lv_tick_get() + duration_ms;
+            // Zapisz czas rozpoczęcia i długość
+            notification_start_time = current_time;
+            notification_duration_ms = duration_ms;
+            printf("[NOTIF] Timer set: start=%lu, duration=%dms\n", notification_start_time, duration_ms);
         }
+        printf("[NOTIF] Notification should now be visible\n");
+    } else {
+        printf("[NOTIF] ERROR: label_notification is NULL!\n");
     }
+}
+
+void main_screen_show_notification(const char *message, int duration_ms) {
+    // Użyj current_system_time jeśli dostępny (dla spójności z timerem), inaczej lv_tick_get()
+    uint32_t now = (current_system_time > 0) ? current_system_time : lv_tick_get();
+    main_screen_show_notification_with_time(message, duration_ms, now);
 }
 
 void main_screen_update_wifi_status(bool connected, int rssi) {
@@ -426,12 +468,28 @@ void main_screen_update_timers(void) {
 }
 
 void main_screen_update_timers_with_time(uint32_t now) {
-    // Ukryj powiadomienie po czasie
-    if (notification_hide_time > 0 && now >= notification_hide_time) {
-        if (label_notification) {
-            lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
+    // Aktualizuj globalny czas
+    current_system_time = now;
+    
+    // Ukryj powiadomienie po czasie - używamy elapsed time zamiast absolute time
+    if (notification_start_time > 0 && notification_duration_ms > 0) {
+        uint32_t elapsed = now - notification_start_time;
+        if (elapsed >= notification_duration_ms) {
+            printf("[NOTIF] AUTO-HIDE: elapsed=%lu, duration=%d\n", 
+                   elapsed, notification_duration_ms);
+            if (label_notification) {
+                lv_obj_add_flag(label_notification, LV_OBJ_FLAG_HIDDEN);
+            }
+            notification_start_time = 0;
+            notification_duration_ms = 0;
         }
-        notification_hide_time = 0;
+    }
+    
+    // Pokaż końcowy komunikat odblokowania po opóźnieniu
+    if (unlock_final_message_time > 0 && now >= unlock_final_message_time) {
+        main_screen_show_notification("Ekran odblokowany!", 3000); // 3 sekundy
+        unlock_final_message_time = 0;
+        printf("[UI] Final unlock notification shown\n");
     }
 }
 

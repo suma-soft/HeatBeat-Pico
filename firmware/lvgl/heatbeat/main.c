@@ -66,7 +66,7 @@
 #endif
 
 #ifndef HB_HOST
-#define HB_HOST "192.168.55.118"
+#define HB_HOST "192.168.55.252"
 #endif
 #ifndef HB_PORT
 #define HB_PORT 8000
@@ -75,8 +75,8 @@
 #define HB_DEVICE_ID 1
 #endif
 
-/* Je┼╝eli masz endpoint ustawie┼ä (POST/PUT /device/{id}/settings),
- * w┼é─ůcz i zaimplementuj hb_http_set_settings_target_temp():
+/* Jeśli masz endpoint ustawień (POST/PUT /device/{id}/settings),
+ * włącz i zaimplementuj hb_http_set_settings_target_temp():
  */
 // #define HB_HAVE_SET_ENDPOINT 1
 
@@ -89,7 +89,7 @@ static bool tick_cb(struct repeating_timer *t) { (void)t; lv_tick_inc(LVGL_TICK_
 extern char __StackLimit, __bss_end__;
 static void print_free_ram(const char* msg) {
     uint32_t free_ram = (uint32_t)&__StackLimit - (uint32_t)&__bss_end__;
-    printf("[RAM] %s: Wolna RAM: %lu bajt├│w\n", msg, (unsigned long)free_ram);
+    printf("[RAM] %s: Wolna RAM: %lu bajtów\n", msg, (unsigned long)free_ram);
 }
 
 #if ENABLE_WIFI
@@ -110,17 +110,17 @@ static int try_wifi_auth(uint32_t auth)
 {
     printf("[WiFi] proba polaczenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
     
-    // Dodatkowa stabilizacja przed pr├│b─ů po┼é─ůczenia
+    // Dodatkowa stabilizacja przed próbą połączenia
     sleep_ms(100);
     
     int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth, 25000); // Oryginalny timeout jak w working version
     if (rc) { 
         printf("[WiFi] NIE polaczono (rc=%d)\n", rc); 
         
-        // Sprawd┼║ czy to b┼é─ůd CYW43
+        // Sprawdź czy to błąd CYW43
         if (rc == PICO_ERROR_GENERIC || rc == PICO_ERROR_TIMEOUT) {
-            printf("[WiFi] Mo┼╝liwy b┼é─ůd komunikacji z CYW43\n");
-            sleep_ms(500); // Dodatkowe op├│┼║nienie przy b┼é─Ödach komunikacji
+            printf("[WiFi] Możliwy błąd komunikacji z CYW43\n");
+            sleep_ms(500); // Dodatkowe opóźnienie przy błędach komunikacji
         }
         return rc; 
     }
@@ -131,7 +131,7 @@ static int try_wifi_auth(uint32_t auth)
         return -1; 
     }
 
-    printf("[WiFi] Polaczono z \"%s\"  IP:", WIFI_SSID);
+    printf("[WiFi] Połączono z \"%s\"  IP:", WIFI_SSID);
     print_ip4(netif_ip4_addr(nif));
     printf("  GW: "); print_ip4(netif_ip4_gw(nif));
     printf("  MASK: "); print_ip4(netif_ip4_netmask(nif));
@@ -140,7 +140,7 @@ static int try_wifi_auth(uint32_t auth)
     int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
     if (rssi != 0) printf("[WiFi] RSSI: %d dBm\n", rssi);
     
-    // Dodatkowa stabilizacja po udanym po┼é─ůczeniu
+    // Dodatkowa stabilizacja po udanym połączeniu
     sleep_ms(200);
     
     return 0;
@@ -150,26 +150,26 @@ static bool wifi_connect_and_log(void) {
     
     int init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
     if (init_result != 0) {
-        printf("[CYW43] Blad inicjalizacji: %d\n", init_result);
+        printf("[CYW43] Błąd inicjalizacji: %d\n", init_result);
         return false;
     }
     
-    printf("[CYW43] Inicjalizacja pomyslna\n");
+    printf("[CYW43] Inicjalizacja pomyślna\n");
     
     // Stabilizacja po inicjalizacji
     sleep_ms(500);
     
     cyw43_arch_enable_sta_mode();
     
-    // Dodatkowa stabilizacja po wlaczeniu trybu STA
+    // Dodatkowa stabilizacja po włączeniu trybu STA
     sleep_ms(200);
     
     const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK, CYW43_AUTH_OPEN };
     for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) { 
         if (try_wifi_auth(try_auths[i]) == 0) return true; 
-        sleep_ms(1000); // Zwi─Ökszone op├│┼║nienie mi─Ödzy pr├│bami
+        sleep_ms(1000); // Zwiększone opóźnienie między próbami
     }
-    printf("[WiFi] Nie udalo sie polaczyc z \"%s\" - sprawdz haslo/SSID.\n", WIFI_SSID);
+    printf("[WiFi] Nie udało się połączyć z \"%s\" - sprawdź hasło/SSID.\n", WIFI_SSID);
     return false;
 }
 static void wifi_status_print_once(void) {
@@ -194,32 +194,32 @@ static inline bool wifi_connect_and_log(void) { return false; }
 static inline void wifi_status_print_once(void) {}
 #endif
 
-// Funkcja do obs┼éugi b┼é─Öd├│w CYW43 i recovery
+// Funkcja do obsługi błędów CYW43 i recovery
 static bool cyw43_error_recovery(void) {
 #if ENABLE_WIFI
     printf("[CYW43] Wykryto blad - proba recovery...\n");
     
-    // Spr├│buj mi─Ökki reset
+    // Spróbuj miękki reset
     cyw43_arch_deinit();
-    sleep_ms(2000); // D┼éu┼╝sza pauza dla stabilno┼Ťci
+    sleep_ms(2000); // Dłuższa pauza dla stabilności
     
     // Ponowna inicjalizacja
     if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND) == 0) {
-        printf("[CYW43] Recovery pomyslne - proba ponownego polaczenia\n");
+        printf("[CYW43] Recovery pomyślne - próba ponownego połączenia\n");
         cyw43_arch_enable_sta_mode();
         sleep_ms(500);
         
-        // Spr├│buj ponownie po┼é─ůczy─ç si─Ö z WiFi
+        // Spróbuj ponownie połączyć się z WiFi
         const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK };
         for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) { 
             if (try_wifi_auth(try_auths[i]) == 0) {
-                printf("[CYW43] Recovery + reconnect pomyslne\n");
+                printf("[CYW43] Recovery + reconnect pomyślne\n");
                 return true;
             }
             sleep_ms(1000);
         }
         
-        printf("[CYW43] Recovery udane, ale nie uda┼éo si─Ö po┼é─ůczy─ç z WiFi\n");
+        printf("[CYW43] Recovery udane, ale nie udało się połączyć z WiFi\n");
         return false;
     } else {
         printf("[CYW43] Recovery nieudane\n");
@@ -233,28 +233,28 @@ static bool cyw43_error_recovery(void) {
 // Funkcja do sprawdzania stanu CYW43
 static bool check_cyw43_health(void) {
 #if ENABLE_WIFI
-    // Sprawd┼║ podstawowe funkcje CYW43
+    // Sprawdź podstawowe funkcje CYW43
     int link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
     
-    // Sprawd┼║ czy status jest w dozwolonym zakresie
-    // Status 0 (DOWN) jest OK gdy nie ma po┼é─ůczenia
+    // Sprawdź czy status jest w dozwolonym zakresie
+    // Status 0 (DOWN) jest OK gdy nie ma połączenia
     if (link_status < CYW43_LINK_DOWN || link_status > CYW43_LINK_BADAUTH) {
-        printf("[CYW43] Nieprawid┼éowy status: %d\n", link_status);
+        printf("[CYW43] Nieprawidłowy status: %d\n", link_status);
         return false;
     }
     
-    // Je┼Ťli mamy po┼é─ůczenie IP, ale link status to DOWN - problem
+    // Jeśli mamy połączenie IP, ale link status to DOWN - problem
     if (have_ip_up() && link_status == CYW43_LINK_DOWN) {
-        printf("[CYW43] Niesp├│jno┼Ť─ç: mamy IP ale link DOWN\n");
+        printf("[CYW43] Niespójność: mamy IP ale link DOWN\n");
         return false;
     }
     
-    // Je┼Ťli brak IP przez d┼éugi czas i status pokazuje link up - mo┼╝e by─ç problem
+    // Jeśli brak IP przez długi czas i status pokazuje link up - może być problem
     static int link_up_without_ip_count = 0;
     if (link_status == CYW43_LINK_UP && !have_ip_up()) {
         link_up_without_ip_count++;
-        if (link_up_without_ip_count > 5) { // 5 sprawdze┼ä = 2.5 minuty
-            printf("[CYW43] Link UP ale brak IP przez d┼éugi czas\n");
+        if (link_up_without_ip_count > 5) { // 5 sprawdzeń = 2.5 minuty
+            printf("[CYW43] Link UP ale brak IP przez długi czas\n");
             link_up_without_ip_count = 0;
             return false;
         }
@@ -262,15 +262,15 @@ static bool check_cyw43_health(void) {
         link_up_without_ip_count = 0;
     }
     
-    // Test komunikacji przez RSSI tylko gdy jest po┼é─ůczenie
+    // Test komunikacji przez RSSI tylko gdy jest połączenie
     static int consecutive_errors = 0;
     if (have_ip_up()) {
         int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
         if (rssi == 0) {
-            // RSSI = 0 przy aktywnym po┼é─ůczeniu mo┼╝e wskazywa─ç na problem
+            // RSSI = 0 przy aktywnym połączeniu może wskazywać na problem
             consecutive_errors++;
             if (consecutive_errors > 3) {
-                printf("[CYW43] Wielokrotne b┼é─Ödy RSSI, mo┼╝liwy problem komunikacji\n");
+                printf("[CYW43] Wielokrotne błędy RSSI, możliwy problem komunikacji\n");
                 consecutive_errors = 0;
                 return false;
             }
@@ -285,15 +285,15 @@ static bool check_cyw43_health(void) {
 #endif
 }
 
-// Funkcja do wykrywania b┼é─Öd├│w hdr mismatch
+// Funkcja do wykrywania błędów hdr mismatch
 static void cyw43_monitor_errors(void) {
 #if ENABLE_WIFI
-    // Tutaj mo┼╝na doda─ç monitoring specific errors
+    // Tutaj można dodać monitoring specific errors
     // Na razie bazowy monitoring w check_cyw43_health
 #endif
 }
 
-// ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ HTTP/Sync ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ========================= HTTP/Sync =========================
 #if ENABLE_WIFI && ENABLE_HTTP_CLIENT
 static uint32_t last_http_post = 0;
 static bool     http_target_logged = false;
@@ -323,10 +323,10 @@ static int recovery_attempts_count = 0;
 #endif
 
 // Parametry konfiguracyjne
-#define SERVER_CHECK_INTERVAL_MS    5000   // Sprawdzanie serwera co 5s (dla test├│w)
-#define READING_SEND_INTERVAL_MS    15000  // Wysy┼éanie odczyt├│w co 15s
+#define SERVER_CHECK_INTERVAL_MS    5000   // Sprawdzanie serwera co 5s (dla testów)
+#define READING_SEND_INTERVAL_MS    15000  // Wysyłanie odczytów co 15s
 #define LOCAL_OVERRIDE_WINDOW_MS    5000   // Okno ochrony lokalnej zmiany
-#define CONNECTION_TIMEOUT_MS       4000   // Timeout dla po┼é─ůcze┼ä HTTP
+#define CONNECTION_TIMEOUT_MS       4000   // Timeout dla połączeń HTTP
 #define HEARTBEAT_INTERVAL_MS       30000  // Heartbeat co 30s
 
 // Helper function for floating point comparison
@@ -357,27 +357,25 @@ static void startup_sync_with_server(void) {
     if (local_override_active && now < local_override_until_ms) {
         printf("[STARTUP] Pomijam sync - aktywna lokalna zmiana (do %ums)\n", 
                (unsigned)local_override_until_ms);
-        main_screen_show_status("Zachowuj─Ö lokalne ustawienia", false);
+        main_screen_show_status("Zachowuję lokalne ustawienia", false);
         return;
     }
     
-    printf("[STARTUP] Rozpoczynam synchronizacj─Ö z serwerem...\n");
+    printf("[STARTUP] Rozpoczynam synchronizację z serwerem...\n");
             main_screen_show_status("Laczenie...", false);
     print_free_ram("Przed HTTP");
     
-    // Dodatkowe op├│┼║nienie dla stabilno┼Ťci po┼é─ůczenia
+    // Dodatkowe opóźnienie dla stabilności połączenia
     sleep_ms(1000);
     
-    printf("[STARTUP] Wysy┼éam ┼╝─ůdanie GET do %s:%d\n", HB_HOST, HB_PORT);
+    printf("[STARTUP] Wysyłam żądanie GET do %s:%d\n", HB_HOST, HB_PORT);
     
     hb_settings_response_t settings;
     hb_http_status_t st = hb_http_get_settings(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
                                               &settings, CONNECTION_TIMEOUT_MS);
     
     print_free_ram("Po HTTP");
-    printf("[STARTUP] Odpowied┼║ z serwera: status=%d\n", (int)st);
-    
-    if (st == HB_HTTP_OK) {
+        printf("[STARTUP] Odpowiedź z serwera: status=%d\n", (int)st);    if (st == HB_HTTP_OK) {
         printf("[STARTUP] HTTP OK - rozpoczynam parsowanie...\n");
         printf("[STARTUP] settings.target_temp_c = %.1f\n", settings.target_temp_c);
         printf("[STARTUP] settings.last_source = '%s'\n", settings.last_source);
@@ -392,33 +390,33 @@ static void startup_sync_with_server(void) {
         g_have_backend_cache = true;
         printf("[STARTUP] Cache ustawiony\n");
         
-        // TYMCZASOWO WY┼ü─äCZONE - UI b─Ödzie aktualizowane p├│┼║niej w main loop
-        // printf("[STARTUP] Wywo┼éuj─Ö main_screen_set_target_c...\n");
+        // TYMCZASOWO WYŁĄCZONE - UI będzie aktualizowane później w main loop
+        // printf("[STARTUP] Wywołuję main_screen_set_target_c...\n");
         // main_screen_set_target_c(settings.target_temp_c);
-        // printf("[STARTUP] main_screen_set_target_c zako┼äczone\n");
+        // printf("[STARTUP] main_screen_set_target_c zakończone\n");
         
-        printf("[STARTUP] Wywoluje main_screen_show_status...\n");
+        printf("[STARTUP] Wywołuję main_screen_show_status...\n");
         main_screen_show_status("Połączono", false);
-        printf("[STARTUP] main_screen_show_status zakonczono\n");
+        printf("[STARTUP] main_screen_show_status zakończono\n");
         
         printf("[STARTUP] Pobrano ustawienia: temp=%.1f°C, source='%s'\n", 
                settings.target_temp_c, settings.last_source);
     } else {
-        main_screen_show_status("B┼é─ůd komunikacji - pracuj─Ö offline", true);
-        printf("[STARTUP] B┼é─ůd pobierania ustawie┼ä: %d\n", (int)st);
+        main_screen_show_status("Błąd komunikacji - pracuję offline", true);
+        printf("[STARTUP] Błąd pobierania ustawień: %d\n", (int)st);
     }
     
-    printf("[STARTUP] Synchronizacja zako┼äczona\n");
-    printf("[STARTUP] Oczekiwanie 5 sekund przed kontynuacj─ů...\n");
+    printf("[STARTUP] Synchronizacja zakończona\n");
+    printf("[STARTUP] Oczekiwanie 5 sekund przed kontynuacją...\n");
     sleep_ms(5000);
-    printf("[STARTUP] Kontynuacja po op├│┼║nieniu\n");
+    printf("[STARTUP] Kontynuacja po opóźnieniu\n");
 }
 
-// Natychmiastowe wys┼éanie odczytu z pending setpoint
+// Natychmiastowe wysłanie odczytu z pending setpoint
 static void send_reading_now(void) {
 #if ENABLE_WIFI
     if (!have_ip_up()) {
-        main_screen_show_status("Brak po┼é─ůczenia z serwerem", true);
+        main_screen_show_status("Brak połączenia z serwerem", true);
         return;
     }
     
@@ -434,17 +432,17 @@ static void send_reading_now(void) {
                                                t, rh, p, set_c, CONNECTION_TIMEOUT_MS);
     
     if (pst == HB_HTTP_OK) {
-        main_screen_show_notification("Wys┼éano do aplikacji", 2000);
+        main_screen_show_notification("Wysłano do aplikacji", 2000);
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
         printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
     } else {
-        main_screen_show_status("Nie uda┼éo si─Ö wys┼éa─ç danych", true);
+        main_screen_show_status("Nie udało się wysłać danych", true);
         printf("[NET] POST reading failed: %d\n", (int)pst);
     }
 #endif
 }
 
-// Pr├│ba bezpo┼Ťredniego ustawienia temperatury przez PUT
+// Próba bezpośredniego ustawienia temperatury przez PUT
 static bool try_direct_set_temperature(float new_target) {
     if (!have_ip_up()) return false;
     
@@ -462,11 +460,11 @@ static bool try_direct_set_temperature(float new_target) {
     }
 }
 
-// wywo┼éywane z UI (slider/suwak/arc)
+// wywoływane z UI (slider/suwak/arc)
 void heatbeat_on_target_temp_changed(float new_target) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
     
-    // 1) Aktywuj ochron─Ö lokalnej zmiany
+    // 1) Aktywuj ochronę lokalnej zmiany
     local_override_active = true;
     local_override_value  = new_target;
     local_override_until_ms = now + LOCAL_OVERRIDE_WINDOW_MS;
@@ -475,16 +473,16 @@ void heatbeat_on_target_temp_changed(float new_target) {
     printf("[LOCAL] Zmiana temperatury: %.1f°C (ochrona do %ums)\n", 
            new_target, (unsigned)local_override_until_ms);
 
-    // 2) Spr├│buj bezpo┼Ťredniego ustawienia (PUT endpoint)
+    // 2) Spróbuj bezpośredniego ustawienia (PUT endpoint)
     bool put_success = try_direct_set_temperature(new_target);
     
-    // 3) Je┼Ťli PUT si─Ö nie uda┼é, zapisz jako pending i wy┼Ťlij przez reading
+    // 3) Jeśli PUT się nie udał, zapisz jako pending i wyślij przez reading
     if (!put_success) {
         g_pending_setpoint = new_target;
         main_screen_show_notification("Wysylanie...", 1500);
         main_screen_set_notification_time(now + 1500);
         
-        // Natychmiastowa pr├│ba przez POST reading
+        // Natychmiastowa próba przez POST reading
         send_reading_now();
     }
     
@@ -519,7 +517,7 @@ static void retry_failed_operations(void) {
     }
 }
 
-// ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ MAIN ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ========================= MAIN =========================
 int main(void) {
     gpio_init(BOOT_DIAG_LED); gpio_set_dir(BOOT_DIAG_LED, GPIO_OUT);
     for (int i=0;i<3;i++){ gpio_put(BOOT_DIAG_LED,1); sleep_ms(80); gpio_put(BOOT_DIAG_LED,0); sleep_ms(80); }
@@ -537,41 +535,41 @@ int main(void) {
 
 #if ENABLE_WIFI
     {
-        absolute_time_t wifi_deadline = make_timeout_time_ms(20000); // Zwi─Ökszony timeout
+        absolute_time_t wifi_deadline = make_timeout_time_ms(20000); // Zwiększony timeout
         printf("[BOOT] Start Wi-Fi init...\n");
-        main_screen_show_status("┼ü─ůczenie z WiFi...", false);
+        main_screen_show_status("Łączenie z WiFi...", false);
         
         int wifi_attempts = 0;
         const int max_wifi_attempts = 2;
         
         while (absolute_time_diff_us(get_absolute_time(), wifi_deadline) > 0 && wifi_attempts < max_wifi_attempts) { 
             wifi_attempts++;
-            printf("[WIFI] Proba polaczenia %d/%d\n", wifi_attempts, max_wifi_attempts);
+            printf("[WIFI] Próba połączenia %d/%d\n", wifi_attempts, max_wifi_attempts);
             
             wifi_ok = wifi_connect_and_log(); 
             if (wifi_ok) {
                 wifi_connected = true;
                 int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
                 main_screen_update_wifi_status(true, rssi);
-                printf("[BOOT] WiFi po┼é─ůczony pomy┼Ťlnie na pr├│bie %d\n", wifi_attempts);
+                printf("[BOOT] WiFi połączony pomyślnie na próbie %d\n", wifi_attempts);
                 break; 
             } else {
-                printf("[BOOT] Pr├│ba WiFi %d nieudana\n", wifi_attempts);
+                printf("[BOOT] Próba WiFi %d nieudana\n", wifi_attempts);
                 if (wifi_attempts < max_wifi_attempts) {
-                    printf("[BOOT] Oczekiwanie przed kolejn─ů pr├│b─ů...\n");
-                    printf("[BOOT] Deinicjalizacja CYW43 przed kolejn─ů pr├│b─ů...\n");
-                    cyw43_arch_deinit();  // Wyczy┼Ť─ç stan CYW43 przed kolejn─ů pr├│b─ů
+                    printf("[BOOT] Oczekiwanie przed kolejną próbą...\n");
+                    printf("[BOOT] Deinicjalizacja CYW43 przed kolejną próbą...\n");
+                    cyw43_arch_deinit();  // Wyczyść stan CYW43 przed kolejną próbą
                     sleep_ms(2000);
                 }
             }
         }
         
         if (!wifi_ok) {
-            printf("[BOOT] Wi-Fi SAFE-MODE: UI rusza bez sieci po %d pr├│bach\n", wifi_attempts);
-            main_screen_show_status("WiFi niedost─Öpne - tryb offline", true);
+            printf("[BOOT] Wi-Fi SAFE-MODE: UI rusza bez sieci po %d próbach\n", wifi_attempts);
+            main_screen_show_status("WiFi niedostępne - tryb offline", true);
             main_screen_update_wifi_status(false, 0);
         } else {
-            // Startup sync z serwerem - z dodatkowym op├│┼║nieniem dla stabilno┼Ťci i timeout
+            // Startup sync z serwerem - z dodatkowym opóźnieniem dla stabilności i timeout
             printf("[BOOT] Przygotowanie do sync z serwerem...\n");
             sleep_ms(1000);
             
@@ -581,13 +579,13 @@ int main(void) {
             
             startup_sync_with_server();
             
-            // Sprawd┼║ czy sync si─Ö zako┼äczy┼é w czasie
+            // Sprawdź czy sync się zakończył w czasie
             if (absolute_time_diff_us(get_absolute_time(), sync_deadline) <= 0) {
                 printf("[BOOT] Startup sync - timeout!\n");
-                main_screen_show_status("Timeout serwera - pracuj─Ö offline", true);
+                main_screen_show_status("Timeout serwera - pracuję offline", true);
             }
             
-            printf("[BOOT] Startup sync zako┼äczony\n");
+            printf("[BOOT] Startup sync zakończony\n");
         }
     }
     
@@ -669,31 +667,29 @@ int main(void) {
         // Aktualizacja UI z cache (tylko raz po starcie)
         static bool ui_cache_applied = false;
         if (!ui_cache_applied && g_have_backend_cache) {
-            printf("[UI] Aktualizuje UI z cache: temp=%.1f°C\n", g_last_backend_set_c);
+            printf("[UI] Aktualizuję UI z cache: temp=%.1f°C\n", g_last_backend_set_c);
             main_screen_set_target_c(g_last_backend_set_c);
             ui_cache_applied = true;
         }
 
 #if ENABLE_WIFI
-        // Monitoring b┼é─Öd├│w CYW43
+        // Monitoring błędów CYW43
         cyw43_monitor_errors();
         // Monitoring zdrowia CYW43 co 30 sekund
         static uint32_t last_cyw43_check = 0;
         if (wifi_ok && (now - last_cyw43_check > 30000)) {
             if (!check_cyw43_health()) {
-                // Unikaj zbyt cz─Östych pr├│b recovery (minimum 2 minuty mi─Ödzy pr├│bami)
+                // Unikaj zbyt częstych prób recovery (minimum 2 minuty między próbami)
                 if (now - last_recovery_attempt > 120000) {
-                    printf("[CYW43] Wykryto problemy ze zdrowiem modu┼éu\n");
-                    main_screen_show_status("Problem z modu┼éem WiFi", true);
-                    
-                    last_recovery_attempt = now;
+                printf("[CYW43] Wykryto problemy ze zdrowiem modułu\n");
+                main_screen_show_status("Problem z modułem WiFi", true);                    last_recovery_attempt = now;
                     recovery_attempts_count++;
                     
-                    // Maksymalnie 3 pr├│by recovery na sesj─Ö
+                    // Maksymalnie 3 próby recovery na sesję
                     if (recovery_attempts_count <= 3) {
-                        // Spr├│buj recovery
+                        // Spróbuj recovery
                         if (cyw43_error_recovery()) {
-                            main_screen_show_status("WiFi przywr├│cony", false);
+                            main_screen_show_status("WiFi przywrócony", false);
                             wifi_connected = have_ip_up();
                             recovery_attempts_count = 0; // Reset counter po udanym recovery
                             
@@ -706,14 +702,14 @@ int main(void) {
                             main_screen_show_status("Recovery nieudane", true);
                         }
                     } else {
-                        main_screen_show_status("WiFi wy┼é─ůczony - za du┼╝o b┼é─Öd├│w", true);
-                        printf("[CYW43] Wy┼é─ůczam WiFi po %d nieudanych pr├│bach recovery\n", recovery_attempts_count);
+                        main_screen_show_status("WiFi wyłączony - za dużo błędów", true);
+                        printf("[CYW43] Wyłączam WiFi po %d nieudanych próbach recovery\n", recovery_attempts_count);
                         wifi_ok = false;
                         wifi_connected = false;
                         main_screen_update_wifi_status(false, 0);
                     }
                 } else {
-                    printf("[CYW43] Problemy wykryte, ale za wcze┼Ťnie na kolejny recovery\n");
+                    printf("[CYW43] Problemy wykryte, ale za wcześnie na kolejny recovery\n");
                 }
             }
             last_cyw43_check = now;
@@ -734,19 +730,19 @@ int main(void) {
                     last_rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
                     main_screen_update_wifi_status(true, last_rssi);
                     
-                    // Reset recovery counter przy udanym po┼é─ůczeniu
+                    // Reset recovery counter przy udanym połączeniu
                     if (recovery_attempts_count > 0) {
-                        printf("[CYW43] Po┼é─ůczenie przywr├│cone - reset recovery counter\n");
+                        printf("[CYW43] Połączenie przywrócone - reset recovery counter\n");
                         recovery_attempts_count = 0;
                     }
                     
-                    // NIE wykonuj automatycznego sync po recovery - mo┼╝e nadpisa─ç lokalne zmiany
+                    // NIE wykonuj automatycznego sync po recovery - może nadpisać lokalne zmiany
                     // if (!g_have_backend_cache) {
-                    //     startup_sync_with_server(); // WY┼ü─äCZONE - nie nadpisuj lokalnych ustawie┼ä
+                    //     startup_sync_with_server(); // WYŁĄCZONE - nie nadpisuj lokalnych ustawień
                     // }
                 } else {
                     main_screen_update_wifi_status(false, 0);
-                    main_screen_show_status("Utracono po┼é─ůczenie", true);
+                    main_screen_show_status("Utracono połączenie", true);
                 }
                 
                 last_status = st; 
@@ -757,7 +753,7 @@ int main(void) {
 
         // Komunikacja z serwerem
         if (wifi_connected && have_ip_up()) {
-            // Sprawdzanie serwera - cz─Ö┼Ťciej przy pending request lub zgodnie z harmonogramem
+            // Sprawdzanie serwera - częściej przy pending request lub zgodnie z harmonogramem
             bool should_check_server = (g_pending_get_request && now - last_server_check > 2000) ||
                                       (now - last_server_check > SERVER_CHECK_INTERVAL_MS);
                                       
@@ -789,24 +785,24 @@ int main(void) {
 
                     // Logika aktualizacji UI na podstawie source
                     if (local_override_active && now < local_override_until_ms) {
-                        // W trakcie lokalnej zmiany - sprawd┼║ czy serwer potwierdzi┼é
+                        // W trakcie lokalnej zmiany - sprawdź czy serwer potwierdził
                         if (nearly_equal(settings.target_temp_c, local_override_value, 0.05f)) {
                             local_override_active = false;
                             main_screen_show_notification("Temperatura\npotwierdzona", 2000);
                             main_screen_set_notification_time(now + 2000);
                             printf("[SYNC] Serwer potwierdził %.1f°C\n", settings.target_temp_c);
                         } else {
-                            printf("[SYNC] Ignoruj─Ö GET podczas lokalnej zmiany (serwer=%.1f, local=%.1f)\n",
+                            printf("[SYNC] Ignoruję GET podczas lokalnej zmiany (serwer=%.1f, local=%.1f)\n",
                                    settings.target_temp_c, local_override_value);
                         }
                     } else {
-                        // Sprawd┼║ czy to zmiana z aplikacji - ma pierwsze┼ästwo ZAWSZE
+                        // Sprawdź czy to zmiana z aplikacji - ma pierwszeństwo ZAWSZE
                         printf("[NET] Sprawdzanie synchronizacji: source='%s', changed=%d, local_active=%d, until=%u, now=%u\n",
                                settings.last_source, settings_changed, local_override_active, 
                                (unsigned)local_override_until_ms, (unsigned)now);
                                
                         if (strcmp(settings.last_source, "app") == 0) {
-                            // Sprawd┼║ czy source zmieni┼é si─Ö z 'device' na 'app' lub temperatura si─Ö r├│┼╝ni
+                            // Sprawdź czy source zmienił się z 'device' na 'app' lub temperatura się różni
                             bool source_changed_to_app = g_have_backend_cache && 
                                                         strcmp(g_last_backend_source, "app") != 0;
                             bool temp_differs = !nearly_equal(settings.target_temp_c, ui_now, 0.05f);
@@ -819,16 +815,16 @@ int main(void) {
                                 local_override_until_ms = 0;
                                 main_screen_set_target_c_from_server(settings.target_temp_c, "app");
                             } else {
-                                printf("[SYNC] Zmiana z aplikacji ju┼╝ zastosowana\n");
+                                printf("[SYNC] Zmiana z aplikacji już zastosowana\n");
                             }
                         } else if (settings_changed) {
-                            // Inne zmiany tylko je┼Ťli rzeczywi┼Ťcie si─Ö zmieni┼éy
+                            // Inne zmiany tylko jeśli rzeczywiście się zmieniły
                             if (local_override_until_ms > 0 && now < local_override_until_ms + 30000) {
-                                // Daj 30s po zako┼äczeniu ochrony zanim zezwolisz na inne nadpisanie
+                                // Daj 30s po zakończeniu ochrony zanim zezwolisz na inne nadpisanie
                                 printf("[SYNC] Czekam 30s po lokalnej zmianie przed nadpisaniem (serwer=%.1f, ui=%.1f)\n",
                                        settings.target_temp_c, ui_now);
                             } else if (!nearly_equal(settings.target_temp_c, ui_now, 0.05f)) {
-                                // Inna zmiana zewn─Ötrzna - tylko je┼Ťli r├│┼╝ni si─Ö znacz─ůco
+                                // Inna zmiana zewnętrzna - tylko jeśli różni się znacząco
                                 main_screen_set_target_c(settings.target_temp_c);
                                 main_screen_show_notification("Ustawienia zmienione zdalnie", 2000);
                                 printf("[SYNC] Temperatura zaktualizowana: %.1f°C\n", settings.target_temp_c);
@@ -844,7 +840,7 @@ int main(void) {
                     
                     main_screen_show_status("Połączono", false);
                 } else {
-                    main_screen_show_status("Blad komunikacji", true);
+                    main_screen_show_status("Błąd komunikacji", true);
                     printf("[NET] GET /device/%d/settings failed: %d\n", HB_DEVICE_ID, (int)gst);
                 }
                 
@@ -852,10 +848,10 @@ int main(void) {
                 g_pending_get_request = false;
             }
 
-            // Cykliczne wysy┼éanie odczyt├│w
+            // Cykliczne wysyłanie odczytów
             if (now - last_http_post > READING_SEND_INTERVAL_MS) {
                 if (!isnan(g_pending_setpoint)) {
-                    // Wy┼Ťlij pending setpoint
+                    // Wyślij pending setpoint
                     send_reading_now();
                     g_pending_setpoint = NAN;
                 } else {
@@ -870,7 +866,7 @@ int main(void) {
                         hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
                                                                    t, rh, p, set_c, CONNECTION_TIMEOUT_MS);
                         if (pst == HB_HTTP_OK) {
-                            printf("[NET] Heartbeat: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
+                            printf("[NET] HeatBeat: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
                         } else {
                             printf("[NET] POST /device/%d/reading failed: %d\n", HB_DEVICE_ID, (int)pst);
                         }
@@ -879,17 +875,17 @@ int main(void) {
                 last_http_post = now;
             }
 
-            // Wy┼é─ůczenie ochrony lokalnej zmiany po czasie
+            // Wyłączenie ochrony lokalnej zmiany po czasie
             if (local_override_active && now >= local_override_until_ms) {
                 printf("[SYNC] Koniec ochrony lokalnej zmiany\n");
                 local_override_active = false;
                 // NIE pobieraj automatycznie z serwera - lokalna zmiana ma priorytet
-                // g_pending_get_request = true; // USUNI─śTE - nie nadpisuj lokalnej zmiany
+                // g_pending_get_request = true; // USUNIĘTE - nie nadpisuj lokalnej zmiany
             }
         } else if (wifi_ok) {
             // WiFi skonfigurowane ale brak IP
             if (now - last_heartbeat > HEARTBEAT_INTERVAL_MS) {
-                main_screen_show_status("Brak po┼é─ůczenia z internetem", true);
+                main_screen_show_status("Brak połączenia z internetem", true);
                 last_heartbeat = now;
             }
         }

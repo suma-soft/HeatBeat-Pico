@@ -51,8 +51,8 @@ target_link_libraries(heatbeat
     lvgl_ui
     screen_objects
     bme280
-    no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
     pico_cyw43_arch_lwip_poll
+    no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
 # RP2350 nie ma targetu hardware_rtc -> linkuj tylko jeśli istnieje (np. przy RP2040)
