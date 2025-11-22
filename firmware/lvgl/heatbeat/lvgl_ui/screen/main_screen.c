@@ -654,7 +654,7 @@ void main_screen_set_target_c_from_server(float c, const char *source) {
     if (from_app) {
         main_screen_show_external_change(true);
         char msg[64];
-        snprintf(msg, sizeof(msg), "Nowa temperatura z aplikacji: %.1f°C", c);
+        snprintf(msg, sizeof(msg), "Nowa temperatura\nz aplikacji: %.1f°C", c);
         main_screen_show_notification(msg, 3000);
     }
 }
