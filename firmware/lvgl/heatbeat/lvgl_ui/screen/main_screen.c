@@ -1,6 +1,7 @@
 extern void heatbeat_on_target_temp_changed(float new_target);
 #include "main_screen.h"
 #include <stdio.h>
+#include <math.h>
 #include "lv_font_montserrat_28_pl.h"
 #include "lvgl.h"
 
@@ -40,6 +41,11 @@ static uint32_t current_system_time = 0; // Czas z main.c
 
 // Status połączenia
 static bool connection_status = false; // false = brak połączenia, true = połączono
+
+// Pulsowanie suwaka dla wysokich temperatur (28-30°C)
+static uint32_t pulse_start_time = 0;
+static bool pulse_active = false;
+static float pulse_phase = 0.0f;
 
 // Blokada ekranu
 static bool screen_locked = true;  // Domyślnie zablokowany
@@ -286,12 +292,37 @@ static void update_arc_color(lv_obj_t *arc, float temperature)
     if (!arc) return;
 
     lv_color_t color = interpolate_color(temperature);
-    lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(arc, color, LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_arc_opa(arc, LV_OPA_COVER, LV_PART_MAIN);
+    
+    // Sprawdź czy temperatura jest w zakresie pulsowania (28-30°C)
+    if (temperature >= 28.0f && temperature <= 30.0f) {
+        if (!pulse_active) {
+            pulse_active = true;
+            pulse_start_time = current_system_time;
+        }
+        
+        // Oblicz fazę pulsowania (2 sekundy na pełny cykl)
+        float time_sec = (current_system_time - pulse_start_time) / 1000.0f;
+        pulse_phase = sin(time_sec * 3.14159f); // 2 sekundy na cykl
+        
+        // Oblicz opacity (od 50% do 100%)
+        lv_opa_t pulse_opa = LV_OPA_50 + (lv_opa_t)((pulse_phase + 1.0f) * 0.5f * (LV_OPA_COVER - LV_OPA_50));
+        
+        lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
+        lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
+        lv_obj_set_style_bg_color(arc, color, LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(arc, pulse_opa, LV_PART_KNOB);
+        lv_obj_set_style_arc_opa(arc, pulse_opa, LV_PART_MAIN);
+    } else {
+        // Temperatura poza zakresem pulsowania - normalny wygląd
+        pulse_active = false;
+        lv_obj_set_style_arc_color(arc, color, LV_PART_MAIN);
+        lv_obj_set_style_arc_color(arc, lv_color_make(40, 40, 40), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(arc, color, LV_PART_KNOB);
+        lv_obj_set_style_bg_color(arc, color, LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(arc, LV_OPA_COVER, LV_PART_KNOB);
+        lv_obj_set_style_arc_opa(arc, LV_OPA_COVER, LV_PART_MAIN);
+    }
 }
 
 // ─────────────────────────────
@@ -320,15 +351,20 @@ void arc_event_cb(lv_event_t *e)
     {
         if (screen_locked) {
             // Zablokowany - przywróć poprzednią wartość
-            lv_arc_set_value(arc, (int)(set_temperature * 10));
+            // Przywróć poprzednią wartość z zaokrągleniem
+            int restore_val = 100 + 300 - (int)(set_temperature * 10);
+            lv_arc_set_value(arc, restore_val);
             return;
         }
         
         handle_screen_tap(); // Odśwież timer aktywności
         
         int val = lv_arc_get_value(arc);
-        int reversed_val = 100 + 400 - val;
-        set_temperature = reversed_val / 10.0f;
+        int reversed_val = 100 + 300 - val; // Nowy zakres 10-30°C
+        float raw_temp = reversed_val / 10.0f;
+        
+        // Zaokrągl do 0.5°C
+        set_temperature = roundf(raw_temp * 2.0f) / 2.0f;
         update_set_temp_label();
         update_arc_color(arc, set_temperature);
 
@@ -491,6 +527,11 @@ void main_screen_update_timers_with_time(uint32_t now) {
         unlock_final_message_time = 0;
         printf("[UI] Final unlock notification shown\n");
     }
+    
+    // Aktualizuj pulsowanie suwaka gdy jest aktywne
+    if (pulse_active && arc_control && !screen_locked) {
+        update_arc_color(arc_control, set_temperature);
+    }
 }
 
 // ─────────────────────────────
@@ -554,7 +595,7 @@ void main_screen_init(void)
     lv_obj_set_size(arc_control, 466, 466);
     lv_arc_set_bg_angles(arc_control, 0, 180);
     lv_obj_align(arc_control, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_range(arc_control, 100, 400);
+    lv_arc_set_range(arc_control, 100, 300); // 10.0-30.0°C
     lv_arc_set_value(arc_control, (int)(set_temperature * 10));
     lv_obj_add_event_cb(arc_control, arc_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_set_style_arc_width(arc_control, 25, LV_PART_MAIN);
@@ -595,7 +636,7 @@ void main_screen_set_target_c(float c) {
     update_set_temp_label();
     update_arc_color(arc_control, set_temperature);
     if (arc_control) {
-        int arc_val = 100 + 400 - (int)(set_temperature * 10); // odwrotna skala
+        int arc_val = 100 + 300 - (int)(set_temperature * 10); // odwrotna skala 10-30°C
         lv_arc_set_value(arc_control, arc_val);
     }
     printf("[UI] Zmieniono temperaturę zadaną: %.1f°C\n", set_temperature);
