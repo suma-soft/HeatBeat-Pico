@@ -13,17 +13,21 @@
 #include "../lv_port/lv_port_indev.h"
 #include "bsp_i2c.h"
 #include "bsp_pcf85063.h"
+#include "bsp_relay.h"
+#include "bsp_buzzer.h"
 #include "lvgl_ui/screen/main_screen.h"
+
+// Global flags
 
 #ifndef ENABLE_WIFI
 #ifdef TEMP_DISABLE_WIFI
 #if TEMP_DISABLE_WIFI
 #define ENABLE_WIFI 0
 #else
-#define ENABLE_WIFI 1
+#define ENABLE_WIFI 1  // WŁĄCZONY Z POJEDYNCZĄ PRÓBĄ
 #endif
 #else
-#define ENABLE_WIFI 1
+#define ENABLE_WIFI 1  // WŁĄCZONY Z POJEDYNCZĄ PRÓBĄ
 #endif
 #endif
 
@@ -59,10 +63,10 @@
 #define DISP_VER_RES 466
 
 #ifndef WIFI_SSID
-#define WIFI_SSID "KAMNET_8960"
+#define WIFI_SSID "KAMNET_8960"  // Zmień na działającą sieć
 #endif
 #ifndef WIFI_PASS
-#define WIFI_PASS "Pawianywchodzanasciany"
+#define WIFI_PASS "Pawianywchodzanasciany"  // Zmień na prawidłowe hasło
 #endif
 
 #ifndef HB_HOST
@@ -106,71 +110,122 @@ static inline bool have_ip_up(void) { return false; }
 #endif
 
 #if ENABLE_WIFI
-static int try_wifi_auth(uint32_t auth)
-{
-    printf("[WiFi] proba polaczenia (auth=0x%08lx) do \"%s\"...\n", (unsigned long)auth, WIFI_SSID);
-    
-    // Dodatkowa stabilizacja przed próbą połączenia
-    sleep_ms(100);
-    
-    int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth, 25000); // Oryginalny timeout jak w working version
-    if (rc) { 
-        printf("[WiFi] NIE polaczono (rc=%d)\n", rc); 
-        
-        // Sprawdź czy to błąd CYW43
-        if (rc == PICO_ERROR_GENERIC || rc == PICO_ERROR_TIMEOUT) {
-            printf("[WiFi] Możliwy błąd komunikacji z CYW43\n");
-            sleep_ms(500); // Dodatkowe opóźnienie przy błędach komunikacji
-        }
-        return rc; 
-    }
-
-    struct netif* nif = get_nif();
-    if (!nif || !netif_is_up(nif)) { 
-        printf("[WiFi] interfejs nie jest UP\n"); 
-        return -1; 
-    }
-
-    printf("[WiFi] Połączono z \"%s\"  IP:", WIFI_SSID);
-    print_ip4(netif_ip4_addr(nif));
-    printf("  GW: "); print_ip4(netif_ip4_gw(nif));
-    printf("  MASK: "); print_ip4(netif_ip4_netmask(nif));
-    printf("\n");
-
-    int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
-    if (rssi != 0) printf("[WiFi] RSSI: %d dBm\n", rssi);
-    
-    // Dodatkowa stabilizacja po udanym połączeniu
-    sleep_ms(200);
-    
-    return 0;
-}
 static bool wifi_connect_and_log(void) {
-    printf("[BOOT] Inicjalizacja CYW43...\n");
+      printf("[BOOT] Inicjalizacja CYW43 z troubleshooting...\n");
+
+    // Wielokrotne próby inicjalizacji jak w troubleshooting guide
+    int init_attempts = 0;
+    const int max_init_attempts = 3;
     
-    int init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
-    if (init_result != 0) {
-        printf("[CYW43] Błąd inicjalizacji: %d\n", init_result);
-        return false;
+    while (init_attempts < max_init_attempts) {
+        init_attempts++;
+        printf("[CYW43] Próba inicjalizacji %d/%d\n", init_attempts, max_init_attempts);
+        
+        int init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
+        if (init_result == 0) {
+            printf("[CYW43] ✅ Inicjalizacja pomyślna na próbie %d\n", init_attempts);
+            break;
+        }
+        
+        printf("[CYW43] ❌ Błąd inicjalizacji: %d (próba %d)\n", init_result, init_attempts);
+        
+        if (init_attempts < max_init_attempts) {
+            // Soft reset przed kolejną próbą jak w guide
+            cyw43_arch_deinit();
+            sleep_ms(1000);
+        } else {
+            printf("[CYW43] ❌ Wszystkie próby inicjalizacji nieudane\n");
+            return false;
+        }
     }
-    
-    printf("[CYW43] Inicjalizacja pomyślna\n");
-    
-    // Stabilizacja po inicjalizacji
-    sleep_ms(500);
-    
+
+      // Zwiększona stabilizacja po inicjalizacji (z 500ms na 1000ms)
+      sleep_ms(1000);
+
     cyw43_arch_enable_sta_mode();
-    
-    // Dodatkowa stabilizacja po włączeniu trybu STA
-    sleep_ms(200);
-    
-    const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK, CYW43_AUTH_OPEN };
-    for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) { 
-        if (try_wifi_auth(try_auths[i]) == 0) return true; 
-        sleep_ms(1000); // Zwiększone opóźnienie między próbami
-    }
-    printf("[WiFi] Nie udało się połączyć z \"%s\" - sprawdź hasło/SSID.\n", WIFI_SSID);
-    return false;
+
+      // Zwiększona stabilizacja po włączeniu trybu STA (z 200ms na 500ms)
+      sleep_ms(500);
+
+      // Ograniczone próby - tylko 2 najpopularniejsze typy  
+      const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK };
+      for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) {
+          printf("[WiFi] === PRÓBA %zu/2 (auth=0x%08lx) ===\n", i+1, (unsigned long)try_auths[i]);
+          
+          // Monitoring zdrowia CYW43 przed próbą
+          int link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+          printf("[CYW43] Status przed próbą: %d\n", link_status);
+          
+          // Sprawdź poprawność statusu - RECOVERY gdy błąd!
+          if (link_status < 0 || link_status > CYW43_LINK_BADAUTH) {
+              printf("[CYW43] ❌ KRYTYCZNY status CYW43: %d - wymuszam recovery\n", link_status);
+              
+              // Natychmiastowy recovery zgodnie z troubleshooting guide
+              printf("[CYW43] Wykonuję soft reset...\n");
+              cyw43_arch_deinit();
+              sleep_ms(2000); // Dłuższa pauza dla stabilności
+              
+              printf("[CYW43] Re-inicjalizacja po błędzie...\n");
+              if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND) != 0) {
+                  printf("[CYW43] ❌ Recovery nieudane - pomijam próbę\n");
+                  continue;
+              }
+              
+              printf("[CYW43] ✅ Recovery pomyślne\n");
+              cyw43_arch_enable_sta_mode();
+              sleep_ms(500);
+              
+              // Sprawdź status po recovery
+              link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+              printf("[CYW43] Status po recovery: %d\n", link_status);
+          }
+          
+          printf("[WiFi] proba polaczenia do \"%s\"...\n", WIFI_SSID);
+
+          // Zwiększona stabilizacja przed próbą połączenia (z 100ms na 200ms)
+          sleep_ms(200);
+
+          int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, try_auths[i], 25000); // Oryginalny timeout 25s
+          if (rc) {
+              printf("[WiFi] NIE polaczono (rc=%d)\n", rc);
+
+              // Sprawdź czy to błąd CYW43 - bez restartu!
+              if (rc == PICO_ERROR_GENERIC || rc == PICO_ERROR_TIMEOUT) {
+                  printf("[WiFi] Możliwy błąd komunikacji z CYW43\n");
+                  sleep_ms(1000); // Zwiększone z 500ms
+              }
+              
+              // Zwiększona pauza między próbami (z 1000ms na 2000ms)
+              if (i < sizeof(try_auths)/sizeof(try_auths[0]) - 1) {
+                  printf("[WiFi] Pauza 2s przed kolejną próbą...\n");
+                  sleep_ms(2000);
+              }
+              continue;
+          }
+
+          struct netif* nif = get_nif();
+          if (!nif || !netif_is_up(nif)) { 
+              printf("[WiFi] interfejs nie jest UP\n"); 
+              continue;
+          }
+
+          printf("[WiFi] Połączono z \"%s\"  IP:", WIFI_SSID);
+          print_ip4(netif_ip4_addr(nif));
+          printf("  GW: "); print_ip4(netif_ip4_gw(nif));
+          printf("  MASK: "); print_ip4(netif_ip4_netmask(nif));
+          printf("\n");
+
+          int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
+          if (rssi != 0) printf("[WiFi] RSSI: %d dBm\n", rssi);
+          
+          // Dodatkowa stabilizacja po udanym połączeniu
+          sleep_ms(200);
+
+          return true;
+      }
+
+      printf("[WiFi] Nie udało się połączyć z \"%s\" – sprawdź hasło/SSID.\n", WIFI_SSID);
+      return false;
 }
 static void wifi_status_print_once(void) {
     int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
@@ -209,14 +264,13 @@ static bool cyw43_error_recovery(void) {
         cyw43_arch_enable_sta_mode();
         sleep_ms(500);
         
-        // Spróbuj ponownie połączyć się z WiFi
-        const uint32_t try_auths[] = { CYW43_AUTH_WPA2_AES_PSK, CYW43_AUTH_WPA2_MIXED_PSK, CYW43_AUTH_WPA_TKIP_PSK };
-        for (size_t i = 0; i < sizeof(try_auths)/sizeof(try_auths[0]); ++i) { 
-            if (try_wifi_auth(try_auths[i]) == 0) {
-                printf("[CYW43] Recovery + reconnect pomyślne\n");
-                return true;
-            }
-            sleep_ms(1000);
+        // Spróbuj ponownie połączyć się z WiFi (pojedyncza próba)
+        printf("[WiFi] proba polaczenia do \"%s\"...\n", WIFI_SSID);
+        
+        int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK, 25000); 
+        if (rc == 0) {
+            printf("[CYW43] Recovery + reconnect pomyślne\n");
+            return true;
         }
         
         printf("[CYW43] Recovery udane, ale nie udało się połączyć z WiFi\n");
@@ -416,7 +470,7 @@ static void startup_sync_with_server(void) {
 static void send_reading_now(void) {
 #if ENABLE_WIFI
     if (!have_ip_up()) {
-        main_screen_show_status("Brak połączenia z serwerem", true);
+        main_screen_show_status("Brak połączenia", true);
         return;
     }
     
@@ -531,44 +585,48 @@ int main(void) {
 
 #if ENABLE_WIFI
     bool wifi_ok = false;
+#else
+    // WiFi wyłączony - inicjalizuj hardware od razu
+    printf("[BOOT] WiFi wyłączony - inicjalizacja hardware...\n");
+    bsp_relay_init();     // GPIO 2 - zawór grzewczy
+    // bsp_buzzer_init();    // GPIO 20 - TYMCZASOWO WYŁĄCZONY
+    printf("[BOOT] Hardware zainicjalizowany bez WiFi\n");
 #endif
 
 #if ENABLE_WIFI
     {
-        absolute_time_t wifi_deadline = make_timeout_time_ms(20000); // Zwiększony timeout
+        // Pojedyncza próba WiFi bez timeout deadline
         printf("[BOOT] Start Wi-Fi init...\n");
         main_screen_show_status("Łączenie z WiFi...", false);
         
-        int wifi_attempts = 0;
-        const int max_wifi_attempts = 2;
+        // POJEDYNCZA PRÓBA WiFi - bez pętli głównej
+        printf("[WIFI] === POJEDYNCZA PRÓBA POŁĄCZENIA ===\n");
         
-        while (absolute_time_diff_us(get_absolute_time(), wifi_deadline) > 0 && wifi_attempts < max_wifi_attempts) { 
-            wifi_attempts++;
-            printf("[WIFI] Próba połączenia %d/%d\n", wifi_attempts, max_wifi_attempts);
+        wifi_ok = wifi_connect_and_log();
+        printf("[WIFI] Wynik pojedynczej próby: %s\n", wifi_ok ? "SUKCES" : "BŁĄD");
+        if (wifi_ok) {
+            wifi_connected = true;
+            int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
+            main_screen_update_wifi_status(true, rssi);
+            printf("[BOOT] WiFi połączony pomyślnie\n");
             
-            wifi_ok = wifi_connect_and_log(); 
-            if (wifi_ok) {
-                wifi_connected = true;
-                int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
-                main_screen_update_wifi_status(true, rssi);
-                printf("[BOOT] WiFi połączony pomyślnie na próbie %d\n", wifi_attempts);
-                break; 
-            } else {
-                printf("[BOOT] Próba WiFi %d nieudana\n", wifi_attempts);
-                if (wifi_attempts < max_wifi_attempts) {
-                    printf("[BOOT] Oczekiwanie przed kolejną próbą...\n");
-                    printf("[BOOT] Deinicjalizacja CYW43 przed kolejną próbą...\n");
-                    cyw43_arch_deinit();  // Wyczyść stan CYW43 przed kolejną próbą
-                    sleep_ms(2000);
-                }
+            // Teraz bezpiecznie inicjalizuj hardware po WiFi
+            printf("[BOOT] Inicjalizacja przekaźnika po WiFi...\n");
+            bsp_relay_init();     // GPIO 2 - zawór grzewczy
+            // bsp_buzzer_init();    // GPIO 20 - TYMCZASOWO WYŁĄCZONY
+        } else {
+            printf("[BOOT] ❌ WiFi WYMAGANE - nie można kontynuować bez połączenia\n");
+            main_screen_show_status("BŁĄD: Brak WiFi - sprawdź sieć", true);
+            main_screen_update_wifi_status(false, 0);
+            
+            // ZATRZYMAJ SYSTEM - nie przechodź do offline
+            while (true) {
+                printf("[SYSTEM] Czekam na restart - WiFi jest wymagane!\n");
+                sleep_ms(5000);
             }
         }
         
-        if (!wifi_ok) {
-            printf("[BOOT] Wi-Fi SAFE-MODE: UI rusza bez sieci po %d próbach\n", wifi_attempts);
-            main_screen_show_status("WiFi niedostępne - tryb offline", true);
-            main_screen_update_wifi_status(false, 0);
-        } else {
+        if (wifi_ok) {
             // Startup sync z serwerem - z dodatkowym opóźnieniem dla stabilności i timeout
             printf("[BOOT] Przygotowanie do sync z serwerem...\n");
             sleep_ms(1000);
@@ -610,6 +668,11 @@ int main(void) {
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
     uint32_t last_bme_print = last_read;
+    
+    // Sterowanie grzaniem
+    uint32_t last_heating_check = 0;
+    bool heating_active = false;
+    const float TEMP_HYSTERESIS = 0.5f; // 0.5°C histerezy
 #if ENABLE_WIFI && ENABLE_HTTP_CLIENT
     uint32_t last_server_check = 0;  // Natychmiastowe pierwsze sprawdzenie
     uint32_t last_heartbeat = last_read;
@@ -660,10 +723,48 @@ int main(void) {
         // Aktualizacja timerów UI
         main_screen_update_timers_with_time(now);
         
+        // Sprawdź buzzer (czy skończyć beep) - TYMCZASOWO WYŁĄCZONY
+        // if (bsp_buzzer_is_active()) {
+        //     // Buzzer sam się wyłączy gdy skończy się czas
+        // }
+        
         // Sprawdzenie auto-lock ekranu - ważne dla blokady ekranu
         extern void check_auto_lock(void);
         check_auto_lock();
 
+        // Sterowanie zaworem grzewczym (co 5 sekund)
+        if (now - last_heating_check > 5000) {
+            extern float set_temperature;
+            float temp_diff = set_temperature - current_temp;
+            bool should_heat = false;
+            
+            if (!heating_active) {
+                // Zawór wyłączony - włącz gdy temperatura jest niższa o histerezy
+                should_heat = (temp_diff > TEMP_HYSTERESIS);
+            } else {
+                // Zawór włączony - wyłącz gdy temperatura osiągnęła cel
+                should_heat = (temp_diff > -TEMP_HYSTERESIS);
+            }
+            
+            if (should_heat != heating_active) {
+                heating_active = should_heat;
+                bsp_relay_set_state(heating_active);
+                
+                // Sygnał dźwiękowy zmiany stanu - TYMCZASOWO WYŁĄCZONY
+                if (heating_active) {
+                    // bsp_buzzer_play_tone(BUZZER_TONE_SUCCESS); // Włączenie grzania
+                    printf("[HEATING] Włączono grzanie: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
+                           current_temp, set_temperature, temp_diff);
+                } else {
+                    // bsp_buzzer_play_tone(BUZZER_TONE_BEEP); // Wyłączenie grzania
+                    printf("[HEATING] Wyłączono grzanie: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
+                           current_temp, set_temperature, temp_diff);
+                }
+            }
+            
+            last_heating_check = now;
+        }
+        
         // Aktualizacja UI z cache (tylko raz po starcie)
         static bool ui_cache_applied = false;
         if (!ui_cache_applied && g_have_backend_cache) {
@@ -898,7 +999,7 @@ int main(void) {
             retry_failed_operations();
             
 #if ENABLE_WIFI
-            // Sprawdź WiFi reconnect jeśli nie ma połączenia
+              // Sprawdź WiFi reconnect jeśli nie ma połączenia
             if (!wifi_connected && !have_ip_up()) {
                 printf("[WIFI] Próba automatycznego reconnect...\n");
                 main_screen_show_status("Łączenie z WiFi...", false);
@@ -910,7 +1011,7 @@ int main(void) {
                     main_screen_show_status("Połączono z WiFi", false);
                 } else {
                     printf("[WIFI] Automatyczny reconnect nieudany\n");
-                    main_screen_show_status("Brak połączenia WiFi", true);
+                    main_screen_show_status("Brak połączenia", true);
                 }
             }
 #endif
