@@ -7,6 +7,10 @@
 #include "pico/time.h"
 #include "hardware/gpio.h"
 
+#if ENABLE_WIFI || !defined(TEMP_DISABLE_WIFI)
+#include "pico/cyw43_arch.h"
+#endif
+
 #include "lvgl.h"
 #include "bme280_port.h"
 #include "../lv_port/lv_port_disp.h"
@@ -18,6 +22,20 @@
 #include "lvgl_ui/screen/main_screen.h"
 
 // Global flags
+
+// === SYSTEM DETEKCJI OTWARTEGO OKNA ===
+static float temp_history[4]; // Historia temperatury (2 min przy pomiarze co 30s)
+static int temp_history_idx = 0;
+static bool temp_history_full = false;
+static bool window_alarm_active = false;
+static bool heating_active = false;
+static absolute_time_t window_alarm_start;
+static absolute_time_t last_window_beep;
+static int window_beep_count = 0;
+
+// === ZAPAMIĘTYWANIE METODY AUTORYZACJI ===
+static uint32_t working_auth_method = 0x00400006;  // Domyślna WPA2_MIXED_PSK
+static bool auth_method_found = false;
 
 #ifndef ENABLE_WIFI
 #ifdef TEMP_DISABLE_WIFI
@@ -195,6 +213,50 @@ static bool diagnose_cyw43_module(void) {
     return true;
 }
 
+// Prosta funkcja reconnect bez diagnostyki (dla recovery)
+static bool wifi_connect_simple(void) {
+    printf("[WIFI] Prosta próba reconnect bez diagnostyki\n");
+    
+    cyw43_arch_enable_sta_mode();
+    sleep_ms(500);
+    
+    // Spróbuj najpierw zapamiętaną metodę autoryzacji
+    if (auth_method_found) {
+        printf("[WiFi] Używam zapamiętanej metody autoryzacji\n");
+        int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, working_auth_method, 8000);
+        if (rc == 0) {
+            printf("[WiFi] ✅ Reconnect z zapamiętaną metodą sukces!\n");
+            return true;
+        }
+        printf("[WiFi] Zapamiętana metoda nie działa, próbuję wszystkie...\n");
+    }
+    
+    // Jeśli zapamiętana nie działa, spróbuj wszystkie (bez diagnostyki!)
+    struct {
+        uint32_t auth;
+        const char* name;
+    } auth_methods[] = {
+        {CYW43_AUTH_WPA2_AES_PSK,   "WPA2_AES_PSK"},    // Najpierw ta która zazwyczaj działa
+        {CYW43_AUTH_WPA2_MIXED_PSK, "WPA2_MIXED_PSK"}, 
+        {CYW43_AUTH_WPA_TKIP_PSK,   "WPA_TKIP_PSK"}
+    };
+    
+    for (int i = 0; i < 3; i++) {
+        printf("[WiFi] Próba %d/3: %s...\n", i+1, auth_methods[i].name);
+        int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth_methods[i].auth, 6000);
+        if (rc == 0) {
+            printf("[WiFi] ✅ Reconnect sukces z %s!\n", auth_methods[i].name);
+            working_auth_method = auth_methods[i].auth;
+            auth_method_found = true;
+            return true;
+        }
+        sleep_ms(300);  // Krótsze opóźnienia
+    }
+    
+    printf("[WiFi] ❌ Reconnect nie powiódł się\n");
+    return false;
+}
+
 static bool wifi_connect_and_log(void) {
       printf("[BOOT] 🔧 NAJPIERW DIAGNOSTYKA CYW43...\n");
       
@@ -240,6 +302,10 @@ static bool wifi_connect_and_log(void) {
           
           if (rc == 0) {
               printf("[WiFi] ✅ SUKCES z %s!\n", auth_methods[i].name);
+              // Zapamiętaj działającą metodę autoryzacji
+              working_auth_method = auth_methods[i].auth;
+              auth_method_found = true;
+              printf("[WiFi] 💾 Zapamiętano metodę autoryzacji: %s\n", auth_methods[i].name);
               connected = true;
           } else {
               printf("[WiFi] ❌ %s nie powiodło się (rc=%d)\n", auth_methods[i].name, rc);
@@ -336,30 +402,31 @@ static bool check_cyw43_health(void) {
     // Sprawdź podstawowe funkcje CYW43
     int link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
     
-    // Sprawdź czy status jest w dozwolonym zakresie
-    // Status 0 (DOWN) jest OK gdy nie ma połączenia
-    if (link_status < CYW43_LINK_DOWN || link_status > CYW43_LINK_BADAUTH) {
-        printf("[CYW43] Nieprawidłowy status: %d\n", link_status);
-        return false;
+    // WAŻNE: Jeśli mamy działające połączenie IP, to CYW43 działa dobrze
+    // nie przejmuj się statusem link - może być w stanie przejściowym
+    if (have_ip_up()) {
+        return true; // Mamy IP = wszystko działa
     }
     
-    // Jeśli mamy połączenie IP, ale link status to DOWN - problem
-    if (have_ip_up() && link_status == CYW43_LINK_DOWN) {
-        printf("[CYW43] Niespójność: mamy IP ale link DOWN\n");
-        return false;
+    // Sprawdź czy status jest w dozwolonym zakresie tylko jeśli nie ma IP
+    // Status 0-6 to prawidłowe wartości (DOWN, JOIN, NONET, NOIP, FAIL, UP, BADAUTH)
+    if (link_status < 0 || link_status > 6) {
+        printf("[CYW43] Nieprawidłowy status: %d (ale może być OK)\n", link_status);
+        // NIE zwracaj false od razu - może być przejściowy
     }
     
-    // Jeśli brak IP przez długi czas i status pokazuje link up - może być problem
-    static int link_up_without_ip_count = 0;
-    if (link_status == CYW43_LINK_UP && !have_ip_up()) {
-        link_up_without_ip_count++;
-        if (link_up_without_ip_count > 5) { // 5 sprawdzeń = 2.5 minuty
-            printf("[CYW43] Link UP ale brak IP przez długi czas\n");
-            link_up_without_ip_count = 0;
+    // Sprawdź czy naprawdę są problemy - tylko długotrwałe problemy
+    static int no_ip_count = 0;
+    if (!have_ip_up()) {
+        no_ip_count++;
+        // Tylko po BARDZO długim czasie bez IP (10 sprawdzeń = 5 minut)
+        if (no_ip_count > 10) {
+            printf("[CYW43] Brak IP przez bardzo długi czas (5+ min) - może być problem\n");
+            no_ip_count = 0;
             return false;
         }
     } else {
-        link_up_without_ip_count = 0;
+        no_ip_count = 0; // Reset licznika gdy IP działa
     }
     
     // Test komunikacji przez RSSI tylko gdy jest połączenie
@@ -424,7 +491,7 @@ static int recovery_attempts_count = 0;
 
 // Parametry konfiguracyjne
 #define SERVER_CHECK_INTERVAL_MS    5000   // Sprawdzanie serwera co 5s (dla testów)
-#define READING_SEND_INTERVAL_MS    15000  // Wysyłanie odczytów co 15s
+#define READING_SEND_INTERVAL_MS    30000  // Wysyłanie odczytów co 30s
 #define LOCAL_OVERRIDE_WINDOW_MS    5000   // Okno ochrony lokalnej zmiany
 #define CONNECTION_TIMEOUT_MS       4000   // Timeout dla połączeń HTTP
 #define HEARTBEAT_INTERVAL_MS       30000  // Heartbeat co 30s
@@ -432,6 +499,127 @@ static int recovery_attempts_count = 0;
 // Helper function for floating point comparison
 static inline bool nearly_equal(float a, float b, float eps) { 
     return fabsf(a - b) <= eps; 
+}
+
+// === DETEKCJA OTWARTEGO OKNA ===
+// ZEWNĘTRZNE: void heatbeat_stop_window_alarm_on_unlock(void); - do wywołania przy odblokowaniu
+static void update_temperature_history(float temp) {
+    temp_history[temp_history_idx] = temp;
+    temp_history_idx = (temp_history_idx + 1) % 4;
+    if (temp_history_idx == 0) temp_history_full = true;
+}
+
+static bool detect_open_window(float current_temp) {
+    // Potrzebujemy przynajmniej 4 pomiary (2 minuty przy 30s interwałach)
+    bool have_enough_data = temp_history_full || temp_history_idx >= 4;
+    if (!have_enough_data) {
+        printf("[WINDOW] Zbieranie danych... mam %d pomiarów, potrzebuję 4 (2 minuty)\n", temp_history_idx);
+        return false;
+    }
+    
+    // Znajdź temperaturę sprzed 2 minut (4 pomiary * 30s = 120s)
+    int old_idx = temp_history_full ? 
+        ((temp_history_idx - 4 + 4) % 4) :  // Gdy bufor pełny - 4 pomiary wstecz
+        0;  // Gdy bufor niepełny - najstarszy pomiar
+    float temp_2min_ago = temp_history[old_idx];
+    
+    float temp_drop = temp_2min_ago - current_temp;
+    
+    printf("[WINDOW] Porównanie: 2min_temu=%.1f°C, teraz=%.1f°C, spadek=%.1f°C\n", 
+           temp_2min_ago, current_temp, temp_drop);
+    
+    // WYKRYJ OTWARTE OKNO: spadek >= 2.0°C w 2 minuty
+    if (temp_drop >= 2.0f) {
+        printf("[WINDOW] 🚨 WYKRYTO OTWARTE OKNO! Spadek %.1f°C w 2 minuty\n", temp_drop);
+        return true;
+    }
+    
+    // ZATRZYMAJ ALARM: wzrost temperatury (okno zamknięte)
+    if (window_alarm_active && temp_drop < 0.5f) {
+        printf("[WINDOW] ✅ Temperatura wzrosła - zatrzymuję alarm (spadek tylko %.1f°C)\n", temp_drop);
+        window_alarm_active = false;
+        return false;
+    }
+    
+    return false;
+}
+
+static void handle_window_alarm() {
+    if (!window_alarm_active) return;
+    
+    absolute_time_t now = get_absolute_time();
+    uint32_t elapsed_ms = absolute_time_diff_us(window_alarm_start, now) / 1000;
+    
+    // Po 10 minutach wyłącz alarm
+    if (elapsed_ms > 600000) { // 10 min
+        printf("[WINDOW] Alarm zakończony po 10 minutach\n");
+        window_alarm_active = false;
+        return;
+    }
+    
+    // Pierwsza minuta: brzęczenie co 4s (1s ON, 3s OFF)
+    if (elapsed_ms < 60000) {
+        uint32_t cycle_time = elapsed_ms % 4000;
+        if (cycle_time < 1000) {
+            // Zabezpieczenie przed wielokrotnym brzęczeniem w tym samym cyklu
+            if (absolute_time_diff_us(last_window_beep, now) > 3500000) { // Minimum 3.5s między brzęczeniami
+                // DODATKOWE sprawdzenie: nie przerywaj aktywnego brzęczenia
+                if (!bsp_buzzer_is_active()) {
+                    printf("[WINDOW] 🔔 Brzęczenie alarmu (1min): cycle=%dms\n", cycle_time);
+                    bsp_buzzer_beep(2000, 500); // 2kHz przez 0.5s - jak test startowy
+                    last_window_beep = now;
+                } else {
+                    printf("[WINDOW] Pomijam - buzzer już aktywny\n");
+                }
+            }
+        }
+    }
+    // Kolejne 9 minut: krótkie brzęczenie co minutę
+    else {
+        uint32_t time_since_first_min = elapsed_ms - 60000;
+        uint32_t minute_cycle = time_since_first_min % 60000;
+        
+        if (minute_cycle < 1000) { // Pierwsza sekunda każdej minuty
+            if (absolute_time_diff_us(last_window_beep, now) > 58000000) { // Zabezpieczenie przed wielokrotnym brzęczeniem
+                // DODATKOWE sprawdzenie: nie przerywaj aktywnego brzęczenia
+                if (!bsp_buzzer_is_active()) {
+                    printf("[WINDOW] 🔔 Brzęczenie #%d (minuta %d)\n", window_beep_count + 1, (int)(time_since_first_min/60000) + 2);
+                    bsp_buzzer_beep(1000, 500); // 1kHz przez 500ms - przypomnienie
+                    last_window_beep = now;
+                    window_beep_count++;
+                } else {
+                    printf("[WINDOW] Pomijam brzęczenie - buzzer już aktywny\n");
+                }
+            }
+        }
+    }
+}
+
+static void start_window_alarm() {
+    if (window_alarm_active) {
+        printf("[WINDOW] Alarm już aktywny, pomijam\n");
+        return; // Już aktywny
+    }
+    
+    printf("[WINDOW] 🔔 URUCHAMIAM ALARM OTWARTEGO OKNA!\n");
+    window_alarm_active = true;
+    window_alarm_start = get_absolute_time();
+    last_window_beep = get_absolute_time();
+    window_beep_count = 0;
+    
+    // NATYCHMIASTOWE GŁOŚNE BRZĘCZENIE!
+    printf("[BUZZER] 🚨 ALARM OTWARTEGO OKNA - GŁOŚNE BRZĘCZENIE! 🚨\n");
+    bsp_buzzer_beep(1000, 2000); // 1kHz przez 2 sekundy - BARDZO GŁOŚNO!
+    sleep_ms(100); // Krótka przerwa
+    bsp_buzzer_beep(1500, 1000); // Drugi sygnał 1.5kHz przez 1s
+}
+
+// Funkcja do zatrzymywania alarmu przy odblokowaniu ekranu
+void heatbeat_stop_window_alarm_on_unlock(void) {
+    if (window_alarm_active) {
+        printf("[WINDOW] 🔓 Alarm zatrzymany przez odblokowanie ekranu\n");
+        window_alarm_active = false;
+    }
 }
 
 // hooki UI
@@ -529,12 +717,15 @@ static void send_reading_now(void) {
     float set_c = isnan(g_pending_setpoint) ? main_screen_get_target_c() : g_pending_setpoint;
     
     hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
-                                               t, rh, p, set_c, CONNECTION_TIMEOUT_MS);
-    
-    if (pst == HB_HTTP_OK) {
-        main_screen_show_notification("Wysłano do aplikacji", 2000);
+                                               t, rh, p, set_c, window_alarm_active, heating_active, CONNECTION_TIMEOUT_MS);    if (pst == HB_HTTP_OK) {
+        if (window_alarm_active) {
+            main_screen_show_notification("⚠️ Wykryto otwarte okno!", 5000);
+            printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C, WINDOW_OPEN=true\n", t, set_c);
+        } else {
+            main_screen_show_notification("Wysłano do aplikacji", 2000);
+            printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C, window_open=false\n", t, set_c);
+        }
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
-        printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
     } else {
         main_screen_show_status("Nie udało się wysłać danych", true);
         printf("[NET] POST reading failed: %d\n", (int)pst);
@@ -635,7 +826,22 @@ int main(void) {
     // WiFi wyłączony - inicjalizuj hardware od razu
     printf("[BOOT] WiFi wyłączony - inicjalizacja hardware...\n");
     bsp_relay_init();     // GPIO 2 - zawór grzewczy
-    // bsp_buzzer_init();    // GPIO 20 - TYMCZASOWO WYŁĄCZONY
+    bsp_buzzer_init();    // GPIO 20 - buzzer dla alarmów
+    
+    // 🔊 TEST BUZZERA przy starcie (tryb offline)
+    printf("[BOOT] 🔊 Test buzzera...\n");
+    bsp_buzzer_beep(2000, 500);  // 2kHz przez 0.5s - test startowy
+    
+    // AKTYWNE CZEKANIE z forsowaniem zatrzymania (offline)
+    absolute_time_t buzzer_timeout = make_timeout_time_ms(600);
+    while (absolute_time_diff_us(get_absolute_time(), buzzer_timeout) > 0) {
+        if (!bsp_buzzer_is_active()) break; // Buzzer się wyłączył
+        sleep_ms(10); // Sprawdzaj co 10ms
+    }
+    
+    // FORSUJ zatrzymanie na koniec
+    bsp_buzzer_stop();
+    printf("[BOOT] Test buzzera zakończony - FORSOWNIE zatrzymany (offline)\n");
     printf("[BOOT] Hardware zainicjalizowany bez WiFi\n");
 #endif
 
@@ -659,7 +865,22 @@ int main(void) {
             // Teraz bezpiecznie inicjalizuj hardware po WiFi
             printf("[BOOT] Inicjalizacja przekaźnika po WiFi...\n");
             bsp_relay_init();     // GPIO 2 - zawór grzewczy
-            // bsp_buzzer_init();    // GPIO 20 - TYMCZASOWO WYŁĄCZONY
+            bsp_buzzer_init();    // GPIO 20 - buzzer dla alarmów
+            
+            // 🔊 TEST BUZZERA przy starcie
+            printf("[BOOT] 🔊 Test buzzera...\n");
+            bsp_buzzer_beep(2000, 500);  // 2kHz przez 0.5s - test startowy
+            
+            // AKTYWNE CZEKANIE z forsowaniem zatrzymania
+            absolute_time_t buzzer_timeout = make_timeout_time_ms(600);
+            while (absolute_time_diff_us(get_absolute_time(), buzzer_timeout) > 0) {
+                if (!bsp_buzzer_is_active()) break; // Buzzer się wyłączył
+                sleep_ms(10); // Sprawdzaj co 10ms
+            }
+            
+            // FORSUJ zatrzymanie na koniec
+            bsp_buzzer_stop();
+            printf("[BOOT] Test buzzera zakończony - FORSOWNIE zatrzymany\n");
         } else {
             printf("[BOOT] ❌ WiFi WYMAGANE - nie można kontynuować bez połączenia\n");
             main_screen_show_status("BŁĄD: Brak WiFi - sprawdź sieć", true);
@@ -717,7 +938,6 @@ int main(void) {
     
     // Sterowanie grzaniem
     uint32_t last_heating_check = 0;
-    bool heating_active = false;
     const float TEMP_HYSTERESIS = 0.5f; // 0.5°C histerezy
 #if ENABLE_WIFI && ENABLE_HTTP_CLIENT
     uint32_t last_server_check = 0;  // Natychmiastowe pierwsze sprawdzenie
@@ -749,14 +969,22 @@ int main(void) {
             gpio_put(BOOT_DIAG_LED, (now/1000) & 1);
         }
 
-        // BME co 2 s
-        if (now - last_read > 2000) {
+        // BME co 30 s - wystarczająco często dla detekcji okna
+        if (now - last_read > 30000) {
             if (bme280_read_data(&bme_data) == 0) {
                 extern float current_temp; extern int humidity; extern float pressure;
                 current_temp = bme_data.temperature;
                 humidity     = (int)(bme_data.humidity + 0.5f);
                 pressure     = bme_data.pressure;
                 extern void update_labels(void); update_labels();
+
+                // === DETEKCJA OTWARTEGO OKNA ===
+                update_temperature_history(current_temp);
+                
+                // Sprawdzaj detekcję przy każdym pomiarze (co 30s)
+                if (detect_open_window(current_temp)) {
+                    start_window_alarm();
+                }
 
                 if (now - last_bme_print > 10000) {
                     printf("[BME] T=%.2f°C RH=%d%% P=%.2f hPa\n", current_temp, humidity, pressure/100.0f);
@@ -769,10 +997,13 @@ int main(void) {
         // Aktualizacja timerów UI
         main_screen_update_timers_with_time(now);
         
-        // Sprawdź buzzer (czy skończyć beep) - TYMCZASOWO WYŁĄCZONY
-        // if (bsp_buzzer_is_active()) {
-        //     // Buzzer sam się wyłączy gdy skończy się czas
-        // }
+        // Obsługa alarmu otwartego okna
+        handle_window_alarm();
+        
+        // Sprawdź buzzer (czy skończyć beep)
+        if (bsp_buzzer_is_active()) {
+            // Buzzer sam się wyłączy gdy skończy się czas
+        }
         
         // Sprawdzenie auto-lock ekranu - ważne dla blokady ekranu
         extern void check_auto_lock(void);
@@ -822,9 +1053,9 @@ int main(void) {
 #if ENABLE_WIFI
         // Monitoring błędów CYW43
         cyw43_monitor_errors();
-        // Monitoring zdrowia CYW43 co 30 sekund
+        // Monitoring zdrowia CYW43 rzadziej - co 2 minuty
         static uint32_t last_cyw43_check = 0;
-        if (wifi_ok && (now - last_cyw43_check > 30000)) {
+        if (wifi_ok && (now - last_cyw43_check > 120000)) {
             if (!check_cyw43_health()) {
                 // Unikaj zbyt częstych prób recovery (minimum 2 minuty między próbami)
                 if (now - last_recovery_attempt > 120000) {
@@ -862,8 +1093,8 @@ int main(void) {
             last_cyw43_check = now;
         }
 
-        // Monitorowanie statusu WiFi
-        if (wifi_ok && (now - last_wifi_status_print > 15000)) {
+        // Monitorowanie statusu WiFi - rzadziej dla stabilności
+        if (wifi_ok && (now - last_wifi_status_print > 60000)) {
             int st = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
             struct netif* nif = get_nif();
             uint32_t ip_raw = (nif && netif_is_up(nif)) ? netif_ip4_addr(nif)->addr : 0;
@@ -1011,7 +1242,7 @@ int main(void) {
                         float set_c = main_screen_get_target_c();
                         
                         hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
-                                                                   t, rh, p, set_c, CONNECTION_TIMEOUT_MS);
+                                                                   t, rh, p, set_c, window_alarm_active, heating_active, CONNECTION_TIMEOUT_MS);
                         if (pst == HB_HTTP_OK) {
                             printf("[NET] HeatBeat: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
                         } else {
@@ -1045,20 +1276,32 @@ int main(void) {
             retry_failed_operations();
             
 #if ENABLE_WIFI
-              // Sprawdź WiFi reconnect jeśli nie ma połączenia
+              // Sprawdź WiFi reconnect jeśli nie ma połączenia - z opóźnieniem dla stabilności
+            static uint32_t last_disconnect_time = 0;
             if (!wifi_connected && !have_ip_up()) {
-                printf("[WIFI] Próba automatycznego reconnect...\n");
-                main_screen_show_status("Łączenie z WiFi...", false);
-                if (wifi_connect_and_log()) {
-                    wifi_connected = true;
-                    int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
-                    main_screen_update_wifi_status(true, rssi);
-                    printf("[WIFI] Automatyczny reconnect pomyślny\n");
-                    main_screen_show_status("Połączono z WiFi", false);
-                } else {
-                    printf("[WIFI] Automatyczny reconnect nieudany\n");
-                    main_screen_show_status("Brak połączenia", true);
+                if (last_disconnect_time == 0) {
+                    last_disconnect_time = now;
+                    printf("[WIFI] Utrata połączenia - czekam 30s przed reconnect...\n");
+                } else if (now - last_disconnect_time > 30000) { // Czekaj 30s
+                    printf("[WIFI] Próba automatycznego reconnect po 30s...\n");
+                    main_screen_show_status("Łączenie z WiFi...", false);
+                    // Używamy prostego reconnect bez diagnostyki aby uniknąć zawieszenia
+                    if (wifi_connect_simple()) {
+                        wifi_connected = true;
+                        last_disconnect_time = 0; // Reset timera po udanym połączeniu
+                        int rssi = cyw43_wifi_get_rssi(&cyw43_state, CYW43_ITF_STA);
+                        main_screen_update_wifi_status(true, rssi);
+                        printf("[WIFI] Automatyczny reconnect pomyślny\n");
+                        main_screen_show_status("Połączono z WiFi", false);
+                    } else {
+                        printf("[WIFI] Automatyczny reconnect nieudany - czekam dalej\n");
+                        main_screen_show_status("Brak połączenia", true);
+                        // NIE resetuj last_disconnect_time - nadal czekamy
+                    }
                 }
+            } else if (wifi_connected && have_ip_up()) {
+                // Reset timera gdy połączenie działa
+                last_disconnect_time = 0;
             }
 #endif
             

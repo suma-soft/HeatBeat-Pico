@@ -58,7 +58,7 @@ hb_http_status_t hb_http_set_settings_target_temp(
     uint32_t timeout_ms
 );
 
-// POST /device/{id}/reading z polami: temperature_c, humidity_pct, pressure_hpa, setpoint_c
+// POST /device/{id}/reading z polami: temperature_c, humidity_pct, pressure_hpa, setpoint_c, window_open_detected, is_heating
 hb_http_status_t hb_http_post_reading(
     const char *host,
     uint16_t port,
@@ -67,6 +67,8 @@ hb_http_status_t hb_http_post_reading(
     float humidity_pct,
     float pressure_hpa,
     float setpoint_c,
+    bool window_open_detected,
+    bool is_heating,
     uint32_t timeout_ms
 );
 

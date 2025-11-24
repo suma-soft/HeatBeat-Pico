@@ -12,6 +12,7 @@
 #include "lv_port_indev.h"
 #include "lvgl.h"
 #include "bsp_ft6146.h"
+#include "bsp_buzzer.h"  // Dla kontroli buzzera przy dotyku
 
 /*********************
  *      DEFINES
@@ -104,6 +105,14 @@ static void touchpad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
         last_x = touch_data.coords[0].x;
         last_y = touch_data.coords[0].y;
         data->state = LV_INDEV_STATE_PR;
+        
+        // WYŁĄCZ wszelkie brzęczenie przy dotyku
+        extern void bsp_buzzer_stop(void);
+        if (bsp_buzzer_is_active()) {
+            printf("[TOUCH] Wykryto niepożądane brzęczenie przy dotyku - WYŁĄCZAM\n");
+            bsp_buzzer_stop();
+        }
+        
         printf("[TOUCH] Pressed at (%d, %d)\n", last_x, last_y);
     }
     else {

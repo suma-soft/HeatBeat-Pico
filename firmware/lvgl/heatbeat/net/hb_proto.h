@@ -39,7 +39,9 @@ static inline int hb_build_reading_json(char *out, size_t cap,
                                         float temperature_c,
                                         float humidity_pct,
                                         float pressure_hpa,
-                                        float setpoint_c)
+                                        float setpoint_c,
+                                        bool window_open_detected,
+                                        bool is_heating)
 {
     if (!out || cap == 0) return -1;
 
@@ -47,8 +49,12 @@ static inline int hb_build_reading_json(char *out, size_t cap,
                      "{\"temperature_c\":%.2f,"
                      "\"humidity_pct\":%.2f,"
                      "\"pressure_hpa\":%.2f,"
-                     "\"setpoint_c\":%.2f}",
-                     temperature_c, humidity_pct, pressure_hpa, setpoint_c);
+                     "\"setpoint_c\":%.2f,"
+                     "\"window_open_detected\":%s,"
+                     "\"is_heating\":%s}",
+                     temperature_c, humidity_pct, pressure_hpa, setpoint_c,
+                     window_open_detected ? "true" : "false",
+                     is_heating ? "true" : "false");
     return (n >= 0 && (size_t)n < cap) ? n : -2;
 }
 
@@ -200,10 +206,12 @@ static inline bool hb_parse_last_source_from_json(const char *json,
 // ============================ POMOCNICZE PRESETY =============================
 static inline int hb_make_post_reading_default(char *out, size_t cap,
                                                float t_c, float rh_pct,
-                                               float p_hpa, float set_c)
+                                               float p_hpa, float set_c,
+                                               bool window_open_detected,
+                                               bool is_heating)
 {
     char json[256];
-    int jn = hb_build_reading_json(json, sizeof(json), t_c, rh_pct, p_hpa, set_c);
+    int jn = hb_build_reading_json(json, sizeof(json), t_c, rh_pct, p_hpa, set_c, window_open_detected, is_heating);
     if (jn < 0) return jn;
 
     return hb_build_http_post_reading(out, cap,

@@ -35,6 +35,7 @@ void bsp_buzzer_set_frequency(uint32_t freq_hz);
 void bsp_buzzer_start(uint32_t freq_hz);
 void bsp_buzzer_stop(void);
 void bsp_buzzer_beep(uint32_t freq_hz, uint32_t duration_ms);
+void bsp_buzzer_beep_async(uint32_t on_ms, uint32_t off_ms);  // Dla powtarzających się sygnałów
 void bsp_buzzer_play_tone(buzzer_tone_t tone);
 bool bsp_buzzer_is_active(void);
 

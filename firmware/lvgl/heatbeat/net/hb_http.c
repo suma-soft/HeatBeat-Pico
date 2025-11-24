@@ -364,6 +364,8 @@ hb_http_status_t hb_http_post_reading(
     float humidity_pct,
     float pressure_hpa,
     float setpoint_c,
+    bool window_open_detected,
+    bool is_heating,
     uint32_t timeout_ms)
 {
     if (!host) return HB_HTTP_ERR_PARAM;
@@ -373,7 +375,7 @@ hb_http_status_t hb_http_post_reading(
 
     char json[256];
     int jn = hb_build_reading_json(json, sizeof(json),
-                                   temperature_c, humidity_pct, pressure_hpa, setpoint_c);
+                                   temperature_c, humidity_pct, pressure_hpa, setpoint_c, window_open_detected, is_heating);
     if (jn < 0) return HB_HTTP_ERR_PARAM;
 
     char req[512];
@@ -428,12 +430,13 @@ hb_http_status_t hb_http_set_settings_target_temp(
 hb_http_status_t hb_http_post_reading(
     const char *host, uint16_t port, int device_id,
     float temperature_c, float humidity_pct, float pressure_hpa,
-    float setpoint_c, uint32_t timeout_ms)
+    float setpoint_c, bool window_open_detected, bool is_heating, uint32_t timeout_ms)
 {
     (void)host; (void)port; (void)device_id; (void)temperature_c; 
-    (void)humidity_pct; (void)pressure_hpa; (void)setpoint_c; (void)timeout_ms;
+    (void)humidity_pct; (void)pressure_hpa; (void)setpoint_c; 
+    (void)window_open_detected; (void)is_heating; (void)timeout_ms;
     printf("[HTTP] WiFi disabled - skipping hb_http_post_reading\n");
-    return HB_HTTP_ERR_CONNECT;
+    return HB_HTTP_OK;
 }
 
 #endif // ENABLE_WIFI
