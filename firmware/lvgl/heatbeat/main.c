@@ -934,7 +934,6 @@ int main(void) {
 
     uint32_t last_read = to_ms_since_boot(get_absolute_time());
     uint32_t last_time = last_read;
-    uint32_t last_bme_print = last_read;
     
     // Sterowanie grzaniem
     uint32_t last_heating_check = 0;
@@ -986,10 +985,7 @@ int main(void) {
                     start_window_alarm();
                 }
 
-                if (now - last_bme_print > 10000) {
-                    printf("[BME] T=%.2f°C RH=%d%% P=%.2f hPa\n", current_temp, humidity, pressure/100.0f);
-                    last_bme_print = now;
-                }
+                // Logi BME280 tylko przy przesyle danych (usunieto co 10s logging)
             }
             last_read = now;
         }
@@ -1027,13 +1023,13 @@ int main(void) {
                 heating_active = should_heat;
                 bsp_relay_set_state(heating_active);
                 
-                // Sygnał dźwiękowy zmiany stanu - TYMCZASOWO WYŁĄCZONY
+                // Sygnał dźwiękowy zmiany stanu
                 if (heating_active) {
-                    // bsp_buzzer_play_tone(BUZZER_TONE_SUCCESS); // Włączenie grzania
-                    printf("[HEATING] Włączono grzanie: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
+                    // SEKUNDOWY BUZZ przy włączeniu grzania
+                    bsp_buzzer_beep(1000, 1000); // 1kHz przez 1 sekundę
+                    printf("[HEATING] 🔥 Włączono grzanie + BUZZ: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
                            current_temp, set_temperature, temp_diff);
                 } else {
-                    // bsp_buzzer_play_tone(BUZZER_TONE_BEEP); // Wyłączenie grzania
                     printf("[HEATING] Wyłączono grzanie: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
                            current_temp, set_temperature, temp_diff);
                 }
@@ -1244,9 +1240,9 @@ int main(void) {
                         hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
                                                                    t, rh, p, set_c, window_alarm_active, heating_active, CONNECTION_TIMEOUT_MS);
                         if (pst == HB_HTTP_OK) {
-                            printf("[NET] HeatBeat: temp=%.1f°C, setpoint=%.1f°C\n", t, set_c);
+                            printf("[NET] BME280: T=%.1f°C RH=%.0f%% P=%.0fhPa -> Server (setpoint=%.1f°C)\n", t, rh, p, set_c);
                         } else {
-                            printf("[NET] POST /device/%d/reading failed: %d\n", HB_DEVICE_ID, (int)pst);
+                            printf("[NET] POST failed: %d (T=%.1f°C RH=%.0f%% P=%.0fhPa)\n", (int)pst, t, rh, p);
                         }
                     }
                 }

@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 // GPIO pin dla przekaźnika KY-019
-#define RELAY_PIN 2
+#define RELAY_PIN 5
 
 // Funkcje publiczne
 void bsp_relay_init(void);
