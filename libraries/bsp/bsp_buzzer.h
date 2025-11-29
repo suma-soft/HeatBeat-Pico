@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 // GPIO pin dla buzzera KY-006
-#define BUZZER_PIN 20
+#define BUZZER_PIN 2
 
 // Predefiniowane częstotliwości dla różnych tonów
 #define BUZZER_FREQ_LOW     200    // Niski ton
@@ -38,6 +38,13 @@ void bsp_buzzer_beep(uint32_t freq_hz, uint32_t duration_ms);
 void bsp_buzzer_beep_async(uint32_t on_ms, uint32_t off_ms);  // Dla powtarzających się sygnałów
 void bsp_buzzer_play_tone(buzzer_tone_t tone);
 bool bsp_buzzer_is_active(void);
+
+// FUNKCJA TESTOWA - ręczne włączenie/wyłączenie
+void bsp_buzzer_test_manual(bool on);
+void bsp_buzzer_play_sad_beep(void);          // Krótki smutny sygnał (alarm okna)
+void bsp_buzzer_play_startup_fanfare(void);   // Fanfary przy włączeniu
+void bsp_buzzer_play_temp_achieved(void);     // Trzy coraz wyższe dźwięki
+void bsp_buzzer_play_heating_on(void);        // Pięć coraz niższych dźwięków
 
 #ifdef __cplusplus
 }

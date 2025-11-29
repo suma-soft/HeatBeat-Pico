@@ -15,11 +15,11 @@ endif()
 # ====================================================================================
 cmake_minimum_required(VERSION 3.13)
 
-# ✅ WYMUŚ ARM (usuń RISC-V)
+# WYMUŚ ARM (usuń RISC-V)
 set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Pico platform" FORCE)
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
-# ✅✅ WAŻNE: Ustaw ścieżkę do lwipopts.h PRZED pico_sdk_import
+# WAŻNE: Ustaw ścieżkę do lwipopts.h PRZED pico_sdk_import
 set(PICO_LWIP_CUSTOM_LWIPOPTS_INCLUDE_PATH 
     "${CMAKE_SOURCE_DIR}/firmware/lvgl/heatbeat/lwipopts.h" 
     CACHE INTERNAL "Path to custom lwipopts.h")

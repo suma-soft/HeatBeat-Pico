@@ -137,14 +137,14 @@ static bool diagnose_cyw43_module(void) {
     printf("[TEST 1] Podstawowa inicjalizacja CYW43...\n");
     int init_result = cyw43_arch_init();
     if (init_result != 0) {
-        printf("❌ [TEST 1] FAILED: cyw43_arch_init() = %d\n", init_result);
+        printf("[TEST 1] FAILED: cyw43_arch_init() = %d\n", init_result);
         printf("   Możliwe przyczyny:\n");
         printf("   - Brak zasilania modułu WiFi\n");
         printf("   - Uszkodzone połączenia SPI\n");
         printf("   - Uszkodzony chip CYW43\n");
         return false;
     }
-    printf("✅ [TEST 1] PASSED: Podstawowa inicjalizacja OK\n");
+    printf("[TEST 1] PASSED: Podstawowa inicjalizacja OK\n");
     
     // Test 2: Inicjalizacja z krajem
     printf("[TEST 2] Inicjalizacja z kodem kraju (Polska)...\n");
@@ -153,10 +153,10 @@ static bool diagnose_cyw43_module(void) {
     
     init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
     if (init_result != 0) {
-        printf("❌ [TEST 2] FAILED: cyw43_arch_init_with_country() = %d\n", init_result);
+        printf("[TEST 2] FAILED: cyw43_arch_init_with_country() = %d\n", init_result);
         return false;
     }
-    printf("✅ [TEST 2] PASSED: Inicjalizacja z krajem OK\n");
+    printf("[TEST 2] PASSED: Inicjalizacja z krajem OK\n");
     
     // Test 3: Włączenie trybu STA
     printf("[TEST 3] Włączanie trybu Station (STA)...\n");
@@ -179,11 +179,11 @@ static bool diagnose_cyw43_module(void) {
     }
     
     if (link_status < 0) {
-        printf("❌ [TEST 4] FAILED: Nieprawidłowy status: %d\n", link_status);
+        printf("[TEST 4] FAILED: Nieprawidłowy status: %d\n", link_status);
         printf("   Moduł CYW43 może mieć problemy komunikacyjne\n");
         return false;
     }
-    printf("✅ [TEST 4] PASSED: Status linku prawidłowy\n");
+    printf("[TEST 4] PASSED: Status linku prawidłowy\n");
     
     // Test 5: Test komunikacji - próba skanowania sieci
     printf("[TEST 5] Test skanowania sieci WiFi...\n");
@@ -196,19 +196,19 @@ static bool diagnose_cyw43_module(void) {
     
     if (comm_test == PICO_ERROR_TIMEOUT) {
         printf("(TIMEOUT - OK, komunikacja działa)\n");
-        printf("✅ [TEST 6] PASSED: Komunikacja z CYW43 działa\n");
+        printf("[TEST 6] PASSED: Komunikacja z CYW43 działa\n");
     } else if (comm_test == PICO_ERROR_BADAUTH || comm_test == -7) {
         printf("(BADAUTH - OK, komunikacja działa)\n");  
-        printf("✅ [TEST 6] PASSED: Komunikacja z CYW43 działa\n");
+        printf("[TEST 6] PASSED: Komunikacja z CYW43 działa\n");
     } else {
         printf("(Kod: %d)\n", comm_test);
-        printf("⚠️  [TEST 6] WARNING: Nieoczekiwany wynik komunikacji\n");
+        printf("[TEST 6] WARNING: Nieoczekiwany wynik komunikacji\n");
     }
     
-    printf("=== 🎯 WYNIKI DIAGNOSTYKI CYW43 ===\n");
-    printf("✅ Moduł CYW43 jest sprawny i komunikuje się poprawnie\n");
-    printf("✅ Zasilanie i połączenia SPI działają\n");
-    printf("📡 Gotowy do testów z prawdziwą siecią WiFi\n\n");
+    printf("=== WYNIKI DIAGNOSTYKI CYW43 ===\n");
+    printf("Moduł CYW43 jest sprawny i komunikuje się poprawnie\n");
+    printf("Zasilanie i połączenia SPI działają\n");
+    printf("Gotowy do testów z prawdziwą siecią WiFi\n\n");
     
     return true;
 }
@@ -225,7 +225,7 @@ static bool wifi_connect_simple(void) {
         printf("[WiFi] Używam zapamiętanej metody autoryzacji\n");
         int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, working_auth_method, 8000);
         if (rc == 0) {
-            printf("[WiFi] ✅ Reconnect z zapamiętaną metodą sukces!\n");
+            printf("[WiFi] Reconnect z zapamiętaną metodą sukces!\n");
             return true;
         }
         printf("[WiFi] Zapamiętana metoda nie działa, próbuję wszystkie...\n");
@@ -245,7 +245,7 @@ static bool wifi_connect_simple(void) {
         printf("[WiFi] Próba %d/3: %s...\n", i+1, auth_methods[i].name);
         int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth_methods[i].auth, 6000);
         if (rc == 0) {
-            printf("[WiFi] ✅ Reconnect sukces z %s!\n", auth_methods[i].name);
+            printf("[WiFi] Reconnect sukces z %s!\n", auth_methods[i].name);
             working_auth_method = auth_methods[i].auth;
             auth_method_found = true;
             return true;
@@ -253,7 +253,7 @@ static bool wifi_connect_simple(void) {
         sleep_ms(300);  // Krótsze opóźnienia
     }
     
-    printf("[WiFi] ❌ Reconnect nie powiódł się\n");
+    printf("[WiFi] Reconnect nie powiódł się\n");
     return false;
 }
 
@@ -262,7 +262,7 @@ static bool wifi_connect_and_log(void) {
       
       // Uruchom pełną diagnostykę modułu
       if (!diagnose_cyw43_module()) {
-          printf("❌ [BOOT] KRYTYCZNY BŁĄD: Moduł CYW43 nie działa!\n");
+          printf("[BOOT] KRYTYCZNY BŁĄD: Moduł CYW43 nie działa!\n");
           printf("   Sprawdź:\n");
           printf("   - Zasilanie płytki (stabilne 3.3V)\n");
           printf("   - Połączenia lutownicze z RP2040\n");  
@@ -277,7 +277,7 @@ static bool wifi_connect_and_log(void) {
     sleep_ms(500);
 
       // MULTI-AUTH TEST - różne typy zabezpieczeń
-      printf("[WiFi] 🔐 MULTI-AUTH test sieci: \"%s\"\n", WIFI_SSID);
+      printf("[WiFi] MULTI-AUTH test sieci: \"%s\"\n", WIFI_SSID);
       
       // Tablica różnych typów autoryzacji do przetestowania
       struct {
@@ -301,14 +301,14 @@ static bool wifi_connect_and_log(void) {
           int rc = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, auth_methods[i].auth, 8000);
           
           if (rc == 0) {
-              printf("[WiFi] ✅ SUKCES z %s!\n", auth_methods[i].name);
+              printf("[WiFi] SUKCES z %s!\n", auth_methods[i].name);
               // Zapamiętaj działającą metodę autoryzacji
               working_auth_method = auth_methods[i].auth;
               auth_method_found = true;
-              printf("[WiFi] 💾 Zapamiętano metodę autoryzacji: %s\n", auth_methods[i].name);
+              printf("[WiFi] Zapamiętano metodę autoryzacji: %s\n", auth_methods[i].name);
               connected = true;
           } else {
-              printf("[WiFi] ❌ %s nie powiodło się (rc=%d)\n", auth_methods[i].name, rc);
+              printf("[WiFi] %s nie powiodło się (rc=%d)\n", auth_methods[i].name, rc);
               
               // Krótka przerwa między próbami
               if (i < num_methods - 1) {
@@ -318,18 +318,18 @@ static bool wifi_connect_and_log(void) {
       }
       
       if (!connected) {
-          printf("[WiFi] ❌ Wszystkie metody autoryzacji nie powiodły się\n");
+          printf("[WiFi] Wszystkie metody autoryzacji nie powiodły się\n");
           printf("[WiFi] Sprawdź czy sieć \"%s\" jest dostępna\n", WIFI_SSID);
           return false;
       }
 
       struct netif* nif = get_nif();
       if (!nif || !netif_is_up(nif)) { 
-          printf("[WiFi] ❌ Interfejs nie jest UP\n"); 
+          printf("[WiFi] Interfejs nie jest UP\n"); 
           return false;
       }
 
-      printf("[WiFi] ✅ SUKCES! Połączono z \"%s\"\n", WIFI_SSID);
+      printf("[WiFi] SUKCES! Połączono z \"%s\"\n", WIFI_SSID);
       printf("[WiFi] IP: ");
       print_ip4(netif_ip4_addr(nif));
       printf("\n");
@@ -536,7 +536,7 @@ static bool detect_open_window(float current_temp) {
     
     // ZATRZYMAJ ALARM: wzrost temperatury (okno zamknięte)
     if (window_alarm_active && temp_drop < 0.5f) {
-        printf("[WINDOW] ✅ Temperatura wzrosła - zatrzymuję alarm (spadek tylko %.1f°C)\n", temp_drop);
+        printf("[WINDOW] Temperatura wzrosła - zatrzymuję alarm (spadek tylko %.1f°C)\n", temp_drop);
         window_alarm_active = false;
         return false;
     }
@@ -565,8 +565,8 @@ static void handle_window_alarm() {
             if (absolute_time_diff_us(last_window_beep, now) > 3500000) { // Minimum 3.5s między brzęczeniami
                 // DODATKOWE sprawdzenie: nie przerywaj aktywnego brzęczenia
                 if (!bsp_buzzer_is_active()) {
-                    printf("[WINDOW] 🔔 Brzęczenie alarmu (1min): cycle=%dms\n", cycle_time);
-                    bsp_buzzer_beep(2000, 500); // 2kHz przez 0.5s - jak test startowy
+                    printf("[WINDOW] Brzęczenie alarmu (1min): cycle=%dms\n", cycle_time);
+                    bsp_buzzer_play_sad_beep(); // Krótki smutny sygnał
                     last_window_beep = now;
                 } else {
                     printf("[WINDOW] Pomijam - buzzer już aktywny\n");
@@ -583,8 +583,8 @@ static void handle_window_alarm() {
             if (absolute_time_diff_us(last_window_beep, now) > 58000000) { // Zabezpieczenie przed wielokrotnym brzęczeniem
                 // DODATKOWE sprawdzenie: nie przerywaj aktywnego brzęczenia
                 if (!bsp_buzzer_is_active()) {
-                    printf("[WINDOW] 🔔 Brzęczenie #%d (minuta %d)\n", window_beep_count + 1, (int)(time_since_first_min/60000) + 2);
-                    bsp_buzzer_beep(1000, 500); // 1kHz przez 500ms - przypomnienie
+                    printf("[WINDOW] Brzęczenie #%d (minuta %d)\n", window_beep_count + 1, (int)(time_since_first_min/60000) + 2);
+                    bsp_buzzer_play_sad_beep(); // Krótki smutny sygnał
                     last_window_beep = now;
                     window_beep_count++;
                 } else {
@@ -601,23 +601,21 @@ static void start_window_alarm() {
         return; // Już aktywny
     }
     
-    printf("[WINDOW] 🔔 URUCHAMIAM ALARM OTWARTEGO OKNA!\n");
+    printf("[WINDOW] URUCHAMIAM ALARM OTWARTEGO OKNA!\n");
     window_alarm_active = true;
     window_alarm_start = get_absolute_time();
     last_window_beep = get_absolute_time();
     window_beep_count = 0;
     
-    // NATYCHMIASTOWE GŁOŚNE BRZĘCZENIE!
-    printf("[BUZZER] 🚨 ALARM OTWARTEGO OKNA - GŁOŚNE BRZĘCZENIE! 🚨\n");
-    bsp_buzzer_beep(1000, 2000); // 1kHz przez 2 sekundy - BARDZO GŁOŚNO!
-    sleep_ms(100); // Krótka przerwa
-    bsp_buzzer_beep(1500, 1000); // Drugi sygnał 1.5kHz przez 1s
+    // KRÓTKI SMUTNY SYGNAŁ - prosty alarm okna
+    printf("[BUZZER] ALARM OTWARTEGO OKNA - smutny sygnał\n");
+    bsp_buzzer_play_sad_beep(); // Krótki smutny sygnał
 }
 
 // Funkcja do zatrzymywania alarmu przy odblokowaniu ekranu
 void heatbeat_stop_window_alarm_on_unlock(void) {
     if (window_alarm_active) {
-        printf("[WINDOW] 🔓 Alarm zatrzymany przez odblokowanie ekranu\n");
+        printf("[WINDOW] Alarm zatrzymany przez odblokowanie ekranu\n");
         window_alarm_active = false;
     }
 }
@@ -719,7 +717,7 @@ static void send_reading_now(void) {
     hb_http_status_t pst = hb_http_post_reading(HB_HOST, (uint16_t)HB_PORT, HB_DEVICE_ID, 
                                                t, rh, p, set_c, window_alarm_active, heating_active, CONNECTION_TIMEOUT_MS);    if (pst == HB_HTTP_OK) {
         if (window_alarm_active) {
-            main_screen_show_notification("⚠️ Wykryto otwarte okno!", 5000);
+            main_screen_show_notification("UWAGA: Wykryto otwarte okno!", 5000);
             printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C, WINDOW_OPEN=true\n", t, set_c);
         } else {
             main_screen_show_notification("Wysłano do aplikacji", 2000);
@@ -825,23 +823,20 @@ int main(void) {
 #else
     // WiFi wyłączony - inicjalizuj hardware od razu
     printf("[BOOT] WiFi wyłączony - inicjalizacja hardware...\n");
-    bsp_relay_init();     // GPIO 2 - zawór grzewczy
-    bsp_buzzer_init();    // GPIO 20 - buzzer dla alarmów
+    bsp_relay_init();     // GPIO 5 - zawór grzewczy
+    bsp_buzzer_init();    // GPIO 2 - buzzer dla alarmów
     
-    // 🔊 TEST BUZZERA przy starcie (tryb offline)
-    printf("[BOOT] 🔊 Test buzzera...\n");
-    bsp_buzzer_beep(2000, 500);  // 2kHz przez 0.5s - test startowy
+    // 🔊 PROSTY TEST BUZZERA - GPIO direct
+    printf("[BOOT] 🔊 BEZPOŚREDNI Test buzzera na GPIO 22...\n");
+    bsp_buzzer_test_manual(true);  // Włącz
+    sleep_ms(1000);                // 1 sekunda
+    bsp_buzzer_test_manual(false); // Wyłącz
+    printf("[BOOT] Test buzzera zakończony - direct GPIO\n");
     
-    // AKTYWNE CZEKANIE z forsowaniem zatrzymania (offline)
-    absolute_time_t buzzer_timeout = make_timeout_time_ms(600);
-    while (absolute_time_diff_us(get_absolute_time(), buzzer_timeout) > 0) {
-        if (!bsp_buzzer_is_active()) break; // Buzzer się wyłączył
-        sleep_ms(10); // Sprawdzaj co 10ms
-    }
+    // 🎺 FANFARY STARTOWE - triumfalne przy włączeniu urządzenia!
+    printf("[BOOT] 🎺 Fanfary startowe...\n");
+    bsp_buzzer_play_startup_fanfare();
     
-    // FORSUJ zatrzymanie na koniec
-    bsp_buzzer_stop();
-    printf("[BOOT] Test buzzera zakończony - FORSOWNIE zatrzymany (offline)\n");
     printf("[BOOT] Hardware zainicjalizowany bez WiFi\n");
 #endif
 
@@ -865,24 +860,16 @@ int main(void) {
             // Teraz bezpiecznie inicjalizuj hardware po WiFi
             printf("[BOOT] Inicjalizacja przekaźnika po WiFi...\n");
             bsp_relay_init();     // GPIO 2 - zawór grzewczy
-            bsp_buzzer_init();    // GPIO 20 - buzzer dla alarmów
+            bsp_buzzer_init();    // GPIO 2 - buzzer dla alarmów
             
-            // 🔊 TEST BUZZERA przy starcie
-            printf("[BOOT] 🔊 Test buzzera...\n");
-            bsp_buzzer_beep(2000, 500);  // 2kHz przez 0.5s - test startowy
-            
-            // AKTYWNE CZEKANIE z forsowaniem zatrzymania
-            absolute_time_t buzzer_timeout = make_timeout_time_ms(600);
-            while (absolute_time_diff_us(get_absolute_time(), buzzer_timeout) > 0) {
-                if (!bsp_buzzer_is_active()) break; // Buzzer się wyłączył
-                sleep_ms(10); // Sprawdzaj co 10ms
-            }
-            
-            // FORSUJ zatrzymanie na koniec
-            bsp_buzzer_stop();
-            printf("[BOOT] Test buzzera zakończony - FORSOWNIE zatrzymany\n");
+            // 🔊 PROSTY TEST BUZZERA - GPIO direct
+            printf("[BOOT] Test buzzera na GPIO 2...\n");
+            bsp_buzzer_test_manual(true);  // Włącz
+            sleep_ms(1000);                // 1 sekunda
+            bsp_buzzer_test_manual(false); // Wyłącz
+            printf("[BOOT] Test buzzera zakończony - direct GPIO\n");
         } else {
-            printf("[BOOT] ❌ WiFi WYMAGANE - nie można kontynuować bez połączenia\n");
+            printf("[BOOT] WiFi WYMAGANE - nie można kontynuować bez połączenia\n");
             main_screen_show_status("BŁĄD: Brak WiFi - sprawdź sieć", true);
             main_screen_update_wifi_status(false, 0);
             
@@ -1025,12 +1012,14 @@ int main(void) {
                 
                 // Sygnał dźwiękowy zmiany stanu
                 if (heating_active) {
-                    // SEKUNDOWY BUZZ przy włączeniu grzania
-                    bsp_buzzer_beep(1000, 1000); // 1kHz przez 1 sekundę
-                    printf("[HEATING] 🔥 Włączono grzanie + BUZZ: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
+                    // PIĘĆ CORAZ NIŻSZYCH DŹWIĘKÓW przy włączeniu grzania
+                    bsp_buzzer_play_heating_on(); // Pięć niższych tonów
+                    printf("[HEATING] Włączono grzanie + pięć niższych tonów: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
                            current_temp, set_temperature, temp_diff);
                 } else {
-                    printf("[HEATING] Wyłączono grzanie: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
+                    // TRZY CORAZ WYŻSZE DŹWIĘKI przy osiągnięciu temperatury
+                    bsp_buzzer_play_temp_achieved();
+                    printf("[HEATING] Wyłączono grzanie + trzy wyższe dźwięki: temp=%.1f°C cel=%.1f°C diff=%.2f°C\n", 
                            current_temp, set_temperature, temp_diff);
                 }
             }
