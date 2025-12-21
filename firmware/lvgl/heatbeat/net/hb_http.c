@@ -63,10 +63,21 @@ static err_t on_connected(void *arg, struct tcp_pcb *tpcb, err_t lwip_err) {
     hb_client_t *c = (hb_client_t *)arg;
     printf("[HTTP] Połączono: err=%d\n", lwip_err);
     
+    if (!c || !tpcb) {
+        printf("[HTTP] KRYTYCZNY: on_connected z NULL arg lub tpcb\n");
+        return ERR_ARG;
+    }
+    
     if (lwip_err != ERR_OK) {
+        printf("[HTTP] Błąd połączenia lwIP: %d\n", lwip_err);
         c->err = HB_HTTP_ERR_CONNECT;
         c->state = ST_ERROR;
         return lwip_err;
+    }
+    
+    // Sprawdź czy jesteśmy w oczekiwanym stanie
+    if (c->state != ST_CONNECTING) {
+        printf("[HTTP] OSTRZEŻENIE: Połączono w nieoczekiwanym stanie: %d\n", c->state);
     }
     tcp_arg(tpcb, c);
     tcp_err(tpcb, on_err);
@@ -122,6 +133,8 @@ static err_t on_sent(void *arg, struct tcp_pcb *tpcb, u16_t len) {
 static err_t on_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     hb_client_t *c = (hb_client_t *)arg;
 
+    printf("[HTTP] on_recv: p=%p, err=%d, resp_len=%u\n", p, err, c->resp_len);
+
     if (!p) {
         printf("[HTTP] Połączenie zamknięte, gotowe\n");
         c->state = ST_DONE;
@@ -168,11 +181,24 @@ static err_t on_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 
 static void on_err(void *arg, err_t lwip_err) {
     hb_client_t *c = (hb_client_t *)arg;
-    printf("[HTTP] Błąd lwIP: %d\n", lwip_err);
-    (void)lwip_err;
+    printf("[HTTP] Błąd lwIP: %d (stan=%d)\n", lwip_err, c ? c->state : -1);
+    
+    if (!c) {
+        printf("[HTTP] KRYTYCZNY: on_err wywołany z NULL arg\n");
+        return;
+    }
+    
+    // LwIP błąd -14 to ERR_WOULDBLOCK - nie krytyczny
+    if (lwip_err == -14) {
+        printf("[HTTP] ERR_WOULDBLOCK - nie krytyczny, kontynuujemy\n");
+        return; // Nie zmieniaj stanu na ERROR
+    }
+    
     if (c->state != ST_DONE) {
         c->err = HB_HTTP_ERR_CONNECT;
         c->state = ST_ERROR;
+        // Wyzeruj PCB ponieważ lwIP już go usunął
+        c->pcb = NULL;
     }
 }
 
@@ -207,29 +233,75 @@ static hb_http_status_t run_client(hb_client_t *c, const ip4_addr_t *ip, u16_t p
     }
 
     absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
+    absolute_time_t last_progress = get_absolute_time();
     uint32_t loop_count = 0;
+    hb_state_t last_state = c->state;
+    
+    printf("[HTTP] Pętla oczekiwania rozpoczęta, stan=%d\n", c->state);
     
     while (c->state != ST_DONE && c->state != ST_ERROR) {
         loop_count++;
+        absolute_time_t now = get_absolute_time();
         
-        cyw43_arch_poll();
-        tight_loop_contents();
-        
-        if (absolute_time_diff_us(get_absolute_time(), deadline) <= 0) {
-            printf("[HTTP] Timeout po %u iteracjach\n", (unsigned)loop_count);
+        // BACKUP TIMEOUT: 1 milion iteracji (~1-2 sekundy)
+        if (loop_count > 1000000) {
+            printf("[HTTP] EMERGENCY TIMEOUT po %u iteracjach (stan=%d)\n", (unsigned)loop_count, c->state);
             c->err = HB_HTTP_ERR_TIMEOUT;
             c->state = ST_ERROR;
             break;
         }
+        
+        // Emergency timeout - 2x dłuższy niż normalny
+        if (absolute_time_diff_us(now, deadline) <= 0) {
+            printf("[HTTP] TIMEOUT po %u iteracjach (stan=%d)\n", (unsigned)loop_count, c->state);
+            c->err = HB_HTTP_ERR_TIMEOUT;
+            c->state = ST_ERROR;
+            break;
+        }
+        
+        // Sprawdź czy stan się zmienił (postęp)
+        if (c->state != last_state) {
+            printf("[HTTP] Zmiana stanu: %d -> %d\n", last_state, c->state);
+            last_state = c->state;
+            last_progress = now;
+        }
+        
+        // Timeout dla braku postępu - agresywniejszy dla CONNECTING
+        uint32_t progress_timeout = (c->state == ST_CONNECTING) ? 2000000 : 4000000; // 2s vs 4s
+        if (absolute_time_diff_us(now, last_progress) > progress_timeout) {
+            printf("[HTTP] Brak postępu przez %us, przerwanie (stan=%d)\n", 
+                   progress_timeout / 1000000, c->state);
+            c->err = HB_HTTP_ERR_TIMEOUT;
+            c->state = ST_ERROR;
+            break;
+        }
+        
+        cyw43_arch_poll();
+        // Brak delay - maksymalna szybkość pętli
+        
+        // Częstsze logowanie co 100k iteracji
+        if (loop_count % 100000 == 0) {
+            printf("[HTTP] Loop %u: stan=%d, req_sent=%u/%u\n", 
+                   (unsigned)loop_count, c->state, c->req_sent, c->req_len);
+        }
 
         if (c->state == ST_SENDING && c->req_sent < c->req_len) {
+            // Sprawdź czy PCB jest nadal ważny
+            if (!c->pcb) {
+                printf("[HTTP] PCB został zamknięty podczas wysyłania\n");
+                c->err = HB_HTTP_ERR_CONNECT;
+                c->state = ST_ERROR;
+                break;
+            }
+            
             u16_t space = tcp_sndbuf(c->pcb);
             if (space > 0) {
                 u16_t chunk = (u16_t)(c->req_len - c->req_sent);
                 if (chunk > space) chunk = space;
                 err_t w = tcp_write(c->pcb, c->req + c->req_sent, chunk, TCP_WRITE_FLAG_COPY);
-                if (w == ERR_OK) tcp_output(c->pcb);
-                else if (w != ERR_MEM) {
+                if (w == ERR_OK) {
+                    tcp_output(c->pcb);
+                } else if (w != ERR_MEM) {
                     printf("[HTTP] Błąd tcp_write: %d\n", w);
                     c->err = HB_HTTP_ERR_SEND;
                     c->state = ST_ERROR;
@@ -238,14 +310,21 @@ static hb_http_status_t run_client(hb_client_t *c, const ip4_addr_t *ip, u16_t p
         }
     }
 
+    // Uproszczony cleanup PCB bez delay
     if (c->pcb) {
+        printf("[HTTP] Cleanup PCB - reset callbacków\n");
         tcp_arg(c->pcb, NULL);
         tcp_recv(c->pcb, NULL);
         tcp_sent(c->pcb, NULL);
         tcp_err(c->pcb, NULL);
+        
         tcp_close(c->pcb);
         c->pcb = NULL;
+        
+        printf("[HTTP] PCB zamknięty\n");
     }
+    
+    printf("[HTTP] Klient HTTP zakończony (stan=%d)\n", c->state);
     return (c->state == ST_DONE) ? HB_HTTP_OK : (hb_http_status_t)c->err;
 }
 

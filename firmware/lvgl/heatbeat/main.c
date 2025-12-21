@@ -470,6 +470,8 @@ static bool     http_target_logged = false;
 static float g_last_backend_set_c = NAN;  
 static char  g_last_backend_source[16] = "";
 static bool  g_have_backend_cache = false;
+static bool  http_in_progress = false;  // Ochrona przed nakładającymi się HTTP
+
 
 // mechanizm ochrony lokalnej zmiany
 static bool     local_override_active = false;
@@ -1120,7 +1122,9 @@ int main(void) {
             bool should_check_server = (g_pending_get_request && now - last_server_check > 2000) ||
                                       (now - last_server_check > SERVER_CHECK_INTERVAL_MS);
                                       
-            if (should_check_server) {
+            if (should_check_server && !http_in_progress) {
+                http_in_progress = true;  // Ustaw flagę
+                
                 if (!http_target_logged) { 
                     http_target_logged = true; 
                     printf("[NET] target %s:%u dev=%d\n", HB_HOST, (unsigned)HB_PORT, HB_DEVICE_ID); 
@@ -1136,11 +1140,19 @@ int main(void) {
                                           !nearly_equal(settings.target_temp_c, g_last_backend_set_c, 0.05f) ||
                                           strcmp(settings.last_source, g_last_backend_source) != 0;
                     
+                    // SZCZEGÓŁOWE DEBUGOWANIE SERWERA
+                    printf("[SYNC] === DANE Z SERWERA ===\n");
+                    printf("[SYNC] Odebrane: temp=%.1f°C, source='%s'\n", 
+                           settings.target_temp_c, settings.last_source);
+                    printf("[SYNC] Cache: temp=%.1f°C, source='%s', have_cache=%d\n",
+                           g_last_backend_set_c, g_last_backend_source, g_have_backend_cache);
+                    printf("[SYNC] UI obecnie: %.1f°C\n", ui_now);
+                    printf("[SYNC] settings_changed=%d\n", settings_changed);
+                    printf("[SYNC] === KONIEC DEBUG ===\n");
+                    
                     if (settings_changed) {
                         printf("[NET] Nowe ustawienia: temp=%.1f°C, source='%s' (ui=%.1f°C)\n", 
                                settings.target_temp_c, settings.last_source, ui_now);
-                        printf("[NET] Cache: temp=%.1f°C, source='%s', have_cache=%d\n",
-                               g_last_backend_set_c, g_last_backend_source, g_have_backend_cache);
                     } else {
                         printf("[NET] Brak zmian: temp=%.1f°C, source='%s' (ui=%.1f°C)\n", 
                                settings.target_temp_c, settings.last_source, ui_now);
@@ -1208,19 +1220,37 @@ int main(void) {
                 }
                 
                 last_server_check = now;
+                
+                http_in_progress = false;  // Reset flagi
                 g_pending_get_request = false;
+                
+                printf("[HTTP] Request zakończony\n");
             }
 
-            // Cykliczne wysyłanie odczytów
-            if (now - last_http_post > READING_SEND_INTERVAL_MS) {
+            // Debug logging dla POST conditions co 10s
+            static uint32_t last_post_debug = 0;
+            if (now - last_post_debug > 10000) {
+                printf("[POST DEBUG] now=%u, last_post=%u, diff=%u, interval=%u\n", 
+                       (unsigned)now, (unsigned)last_http_post, 
+                       (unsigned)(now - last_http_post), (unsigned)READING_SEND_INTERVAL_MS);
+                printf("[POST DEBUG] http_in_progress=%d\n", http_in_progress);
+                last_post_debug = now;
+            }
+
+            // Cykliczne wysyłanie odczytów (bez http_delay_ok - POST ma swój 30s interwał)
+            if (now - last_http_post > READING_SEND_INTERVAL_MS && !http_in_progress) {
                 if (!isnan(g_pending_setpoint)) {
                     // Wyślij pending setpoint
+                    http_in_progress = true;  // Ustaw ochronę
                     send_reading_now();
                     g_pending_setpoint = NAN;
+                    http_in_progress = false; // Reset ochrony
                 } else {
                     // Standardowy odczyt
                     struct bme280_data d;
                     if (bme280_read_data(&d) == 0) {
+                        http_in_progress = true;  // Ustaw ochronę
+                        
                         float t  = d.temperature;
                         float rh = d.humidity;
                         float p  = d.pressure / 100.0f;
@@ -1233,9 +1263,12 @@ int main(void) {
                         } else {
                             printf("[NET] POST failed: %d (T=%.1f°C RH=%.0f%% P=%.0fhPa)\n", (int)pst, t, rh, p);
                         }
+                        
+                        http_in_progress = false; // Reset ochrony
                     }
                 }
                 last_http_post = now;
+                printf("[HTTP] POST Request zakończony\n");
             }
 
             // Wyłączenie ochrony lokalnej zmiany po czasie
