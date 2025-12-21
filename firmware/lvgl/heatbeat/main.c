@@ -137,14 +137,14 @@ static bool diagnose_cyw43_module(void) {
     printf("[TEST 1] Podstawowa inicjalizacja CYW43...\n");
     int init_result = cyw43_arch_init();
     if (init_result != 0) {
-        printf("[TEST 1] FAILED: cyw43_arch_init() = %d\n", init_result);
+        printf("[TEST 1] BŁĄD: cyw43_arch_init() = %d\n", init_result);
         printf("   Możliwe przyczyny:\n");
         printf("   - Brak zasilania modułu WiFi\n");
         printf("   - Uszkodzone połączenia SPI\n");
         printf("   - Uszkodzony chip CYW43\n");
         return false;
     }
-    printf("[TEST 1] PASSED: Podstawowa inicjalizacja OK\n");
+    printf("[TEST 1] SUKCES: Podstawowa inicjalizacja OK\n");
     
     // Test 2: Inicjalizacja z krajem
     printf("[TEST 2] Inicjalizacja z kodem kraju (Polska)...\n");
@@ -153,10 +153,10 @@ static bool diagnose_cyw43_module(void) {
     
     init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
     if (init_result != 0) {
-        printf("[TEST 2] FAILED: cyw43_arch_init_with_country() = %d\n", init_result);
+        printf("[TEST 2] BŁĄD: cyw43_arch_init_with_country() = %d\n", init_result);
         return false;
     }
-    printf("[TEST 2] PASSED: Inicjalizacja z krajem OK\n");
+    printf("[TEST 2] SUKCES: Inicjalizacja z krajem OK\n");
     
     // Test 3: Włączenie trybu STA
     printf("[TEST 3] Włączanie trybu Station (STA)...\n");
@@ -179,11 +179,11 @@ static bool diagnose_cyw43_module(void) {
     }
     
     if (link_status < 0) {
-        printf("[TEST 4] FAILED: Nieprawidłowy status: %d\n", link_status);
+        printf("[TEST 4] BŁĄD: Nieprawidłowy status: %d\n", link_status);
         printf("   Moduł CYW43 może mieć problemy komunikacyjne\n");
         return false;
     }
-    printf("[TEST 4] PASSED: Status linku prawidłowy\n");
+    printf("[TEST 4] SUKCES: Status linku prawidłowy\n");
     
     // Test 5: Test komunikacji - próba skanowania sieci
     printf("[TEST 5] Test skanowania sieci WiFi...\n");
@@ -196,13 +196,13 @@ static bool diagnose_cyw43_module(void) {
     
     if (comm_test == PICO_ERROR_TIMEOUT) {
         printf("(TIMEOUT - OK, komunikacja działa)\n");
-        printf("[TEST 6] PASSED: Komunikacja z CYW43 działa\n");
+        printf("[TEST 6] SUKCES: Komunikacja z CYW43 działa\n");
     } else if (comm_test == PICO_ERROR_BADAUTH || comm_test == -7) {
         printf("(BADAUTH - OK, komunikacja działa)\n");  
-        printf("[TEST 6] PASSED: Komunikacja z CYW43 działa\n");
+        printf("[TEST 6] SUKCES: Komunikacja z CYW43 działa\n");
     } else {
         printf("(Kod: %d)\n", comm_test);
-        printf("[TEST 6] WARNING: Nieoczekiwany wynik komunikacji\n");
+        printf("[TEST 6] OSTRZEŻENIE: Nieoczekiwany wynik komunikacji\n");
     }
     
     printf("=== WYNIKI DIAGNOSTYKI CYW43 ===\n");
@@ -665,15 +665,15 @@ static void startup_sync_with_server(void) {
     print_free_ram("Po HTTP");
         printf("[STARTUP] Odpowiedź z serwera: status=%d\n", (int)st);    if (st == HB_HTTP_OK) {
         printf("[STARTUP] HTTP OK - rozpoczynam parsowanie...\n");
-        printf("[STARTUP] settings.target_temp_c = %.1f\n", settings.target_temp_c);
-        printf("[STARTUP] settings.last_source = '%s'\n", settings.last_source);
+        printf("[STARTUP] ustawienia.temp_docelowa_c = %.1f\n", settings.target_temp_c);
+        printf("[STARTUP] ustawienia.ostatnie_zrodlo = '%s'\n", settings.last_source);
         
         g_last_backend_set_c = settings.target_temp_c;
         printf("[STARTUP] Temp zapisana: %.1f\n", g_last_backend_set_c);
         
         strncpy(g_last_backend_source, settings.last_source, sizeof(g_last_backend_source) - 1);
         g_last_backend_source[sizeof(g_last_backend_source) - 1] = '\0';
-        printf("[STARTUP] Source zapisane: '%s'\n", g_last_backend_source);
+        printf("[STARTUP] Źródło zapisane: '%s'\n", g_last_backend_source);
         
         g_have_backend_cache = true;
         printf("[STARTUP] Cache ustawiony\n");
@@ -687,7 +687,7 @@ static void startup_sync_with_server(void) {
         main_screen_show_status("Połączono", false);
         printf("[STARTUP] main_screen_show_status zakończono\n");
         
-        printf("[STARTUP] Pobrano ustawienia: temp=%.1f°C, source='%s'\n", 
+        printf("[STARTUP] Pobrano ustawienia: temp=%.1f°C, źródło='%s'\n", 
                settings.target_temp_c, settings.last_source);
     } else {
         main_screen_show_status("Błąd komunikacji - pracuję offline", true);
@@ -720,15 +720,15 @@ static void send_reading_now(void) {
                                                t, rh, p, set_c, window_alarm_active, heating_active, CONNECTION_TIMEOUT_MS);    if (pst == HB_HTTP_OK) {
         if (window_alarm_active) {
             main_screen_show_notification("UWAGA: Wykryto otwarte okno!", 5000);
-            printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C, WINDOW_OPEN=true\n", t, set_c);
+            printf("[NET] POST odczyt: temp=%.1f°C, zadana=%.1f°C, OKNO_OTWARTE=tak\n", t, set_c);
         } else {
             main_screen_show_notification("Wysłano do aplikacji", 2000);
-            printf("[NET] POST reading: temp=%.1f°C, setpoint=%.1f°C, window_open=false\n", t, set_c);
+            printf("[NET] POST odczyt: temp=%.1f°C, zadana=%.1f°C, okno_otwarte=nie\n", t, set_c);
         }
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
     } else {
         main_screen_show_status("Nie udało się wysłać danych", true);
-        printf("[NET] POST reading failed: %d\n", (int)pst);
+        printf("[NET] POST odczyt nie powiodło się: %d\n", (int)pst);
     }
 #endif
 }
@@ -743,10 +743,10 @@ static bool try_direct_set_temperature(float new_target) {
     if (st == HB_HTTP_OK) {
         main_screen_show_notification("Temperatura\nzaktualizowana", 2000);
         main_screen_set_notification_time(to_ms_since_boot(get_absolute_time()) + 2000);
-        printf("[NET] PUT settings: target=%.1f°C\n", new_target);
+        printf("[NET] PUT ustawienia: cel=%.1f°C\n", new_target);
         return true;
     } else {
-        printf("[NET] PUT settings failed: %d\n", (int)st);
+        printf("[NET] PUT ustawienia nie powiodło się: %d\n", (int)st);
         return false;
     }
 }
@@ -784,18 +784,18 @@ void heatbeat_on_target_temp_changed(float new_target) {
 // Funkcje dodatkowe do obsługi błędów i logowania
 static void log_system_status(void) {
 #if ENABLE_WIFI
-    printf("[STATUS] WiFi: %s, Backend cache: %s, Local override: %s\n", 
-           wifi_connected ? "Connected" : "Disconnected",
-           g_have_backend_cache ? "Yes" : "No",
-           local_override_active ? "Active" : "Inactive");
+    printf("[STATUS] WiFi: %s, Cache backendu: %s, Nadpisanie lokalne: %s\n", 
+           wifi_connected ? "Połączony" : "Rozłączony",
+           g_have_backend_cache ? "Tak" : "Nie",
+           local_override_active ? "Aktywny" : "Nieaktywny");
 #else
-    printf("[STATUS] WiFi: Disabled, Backend cache: %s, Local override: %s\n", 
-           g_have_backend_cache ? "Yes" : "No",
-           local_override_active ? "Active" : "Inactive");
+    printf("[STATUS] WiFi: Wyłączony, Cache backendu: %s, Nadpisanie lokalne: %s\n", 
+           g_have_backend_cache ? "Tak" : "Nie",
+           local_override_active ? "Aktywny" : "Nieaktywny");
 #endif
     
     if (g_have_backend_cache) {
-        printf("[STATUS] Backend: temp=%.1f°C, source='%s'\n", 
+        printf("[STATUS] Backend: temp=%.1f°C, źródło='%s'\n", 
                g_last_backend_set_c, g_last_backend_source);
     }
 }
@@ -1216,7 +1216,7 @@ int main(void) {
                     main_screen_show_status("Połączono", false);
                 } else {
                     main_screen_show_status("Błąd komunikacji", true);
-                    printf("[NET] GET /device/%d/settings failed: %d\n", HB_DEVICE_ID, (int)gst);
+                    printf("[NET] GET /device/%d/ustawienia nie powiodło się: %d\n", HB_DEVICE_ID, (int)gst);
                 }
                 
                 last_server_check = now;
@@ -1227,14 +1227,14 @@ int main(void) {
                 printf("[HTTP] Request zakończony\n");
             }
 
-            // Debug logging dla POST conditions co 10s
-            static uint32_t last_post_debug = 0;
-            if (now - last_post_debug > 10000) {
-                printf("[POST DEBUG] now=%u, last_post=%u, diff=%u, interval=%u\n", 
+            // Debug HTTP co 10s
+            static uint32_t ostatni_debug_http = 0;
+            if (now - ostatni_debug_http > 10000) {
+                printf("[HTTP DEBUG] teraz=%u, ostatni_post=%u, różnica=%u, interwał=%u\n", 
                        (unsigned)now, (unsigned)last_http_post, 
                        (unsigned)(now - last_http_post), (unsigned)READING_SEND_INTERVAL_MS);
-                printf("[POST DEBUG] http_in_progress=%d\n", http_in_progress);
-                last_post_debug = now;
+                printf("[HTTP DEBUG] trwa_http=%d\n", http_in_progress);
+                ostatni_debug_http = now;
             }
 
             // Cykliczne wysyłanie odczytów (bez http_delay_ok - POST ma swój 30s interwał)
@@ -1261,7 +1261,7 @@ int main(void) {
                         if (pst == HB_HTTP_OK) {
                             printf("[NET] BME280: T=%.1f°C RH=%.0f%% P=%.0fhPa -> Server (setpoint=%.1f°C)\n", t, rh, p, set_c);
                         } else {
-                            printf("[NET] POST failed: %d (T=%.1f°C RH=%.0f%% P=%.0fhPa)\n", (int)pst, t, rh, p);
+                            printf("[NET] POST nie powiodło się: %d (T=%.1f°C RH=%.0f%% P=%.0fhPa)\n", (int)pst, t, rh, p);
                         }
                         
                         http_in_progress = false; // Reset ochrony

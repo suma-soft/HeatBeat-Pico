@@ -484,7 +484,7 @@ hb_http_status_t hb_http_get_settings(
     hb_settings_response_t *out_settings, uint32_t timeout_ms)
 {
     (void)host; (void)port; (void)device_id; (void)out_settings; (void)timeout_ms;
-    printf("[HTTP] WiFi disabled - skipping hb_http_get_settings\n");
+    printf("[HTTP] WiFi wyłączony - pomijam hb_http_get_settings\n");
     return HB_HTTP_ERR_CONNECT;
 }
 
@@ -493,7 +493,7 @@ hb_http_status_t hb_http_get_settings_target_temp(
     float *out_target_temp, uint32_t timeout_ms)
 {
     (void)host; (void)port; (void)device_id; (void)out_target_temp; (void)timeout_ms;
-    printf("[HTTP] WiFi disabled - skipping hb_http_get_settings_target_temp\n");
+    printf("[HTTP] WiFi wyłączony - pomijam hb_http_get_settings_target_temp\n");
     return HB_HTTP_ERR_CONNECT;
 }
 
@@ -502,7 +502,7 @@ hb_http_status_t hb_http_set_settings_target_temp(
     float target_temp, uint32_t timeout_ms)
 {
     (void)host; (void)port; (void)device_id; (void)target_temp; (void)timeout_ms;
-    printf("[HTTP] WiFi disabled - skipping hb_http_set_settings_target_temp\n");
+    printf("[HTTP] WiFi wyłączony - pomijam hb_http_set_settings_target_temp\n");
     return HB_HTTP_ERR_CONNECT;
 }
 
@@ -514,7 +514,7 @@ hb_http_status_t hb_http_post_reading(
     (void)host; (void)port; (void)device_id; (void)temperature_c; 
     (void)humidity_pct; (void)pressure_hpa; (void)setpoint_c; 
     (void)window_open_detected; (void)is_heating; (void)timeout_ms;
-    printf("[HTTP] WiFi disabled - skipping hb_http_post_reading\n");
+    printf("[HTTP] WiFi wyłączony - pomijam hb_http_post_reading\n");
     return HB_HTTP_OK;
 }
 
