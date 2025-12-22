@@ -50,20 +50,25 @@ PUT  /device/{id}/settings     # Zaktualizuj temperaturę [opcjonalne]
 ## 🔧 Kluczowe funkcje
 
 ### 1. Dwukierunkowa komunikacja:
-- **Lokalne zmiany** → wysyłane na serwer via POST /reading
-- **Zdalne zmiany** → pobierane via GET /settings
-- **Konflikt resolution** - priorytet ostatniej zmiany
+- **GET /settings** → pobieranie ustawień co 5 sekund (poprzednio co 8s)
+- **POST /reading** → wysyłanie telemetrii co 30 sekund
+- **PUT /settings** → aktualizacja ustawień [opcjonalne]
+- **Konflikt resolution** - lokalne nadpisanie z priorytetem
+- **Emergency timeouts** - zabezpieczenia przed zawieszaniem
 
 ### 2. Interfejs użytkownika:
 - **Arc control** - intuicyjna zmiana temperatury dotykiem
-- **Status notifications** - informacje o stanie połączenia
-- **WiFi indicator** - siła sygnału i status połączenia
-- **External change indicator** - powiadomienie o zdalnych zmianach
+- **Odblokowywanie ekranu** - 3 szybkie dotknięcia
+- **Status systemu** - WiFi: Połączony/Rozłączony, Cache: Tak/Nie
+- **Powiadomienia polskie** - wszystkie komunikaty w języku polskim
+- **Wykrywanie otwartych okien** - alarm przy spadku ≥2°C w 2 min
 
-### 3. Offline capability:
-- **Standalone operation** - termostat działa bez internetu
-- **Local temperature control** - niezależnie od serwera
-- **Automatic reconnection** - powrót do komunikacji po odzyskaniu łączności
+### 3. Stabilność i bezpieczeństwo:
+- **HTTP Mutex protection** - zabezpieczenie przed nakładającymi się requestami
+- **CYW43 Diagnostyka** - testy modułu WiFi przy starcie
+- **Progress timeouts** - 2s dla connecting, 4s dla innych operacji
+- **Emergency timeout** - 1M iteracji jako ostateczny backup
+- **Offline capability** - kontynuacja pracy bez internetu
 
 ## 🛡️ Emergency Recovery System
 

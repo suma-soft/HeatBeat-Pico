@@ -6,22 +6,25 @@ Inteligentny termostat oparty na Raspberry Pi Pico W z dwukierunkową komunikacj
 ## Cechy Główne
 
 ### 🌐 Komunikacja Dwukierunkowa
-- **Lokalne zmiany**: Natychmiastowe wysyłanie na serwer przez PUT/POST
-- **Zdalne zmiany**: Automatyczne pobieranie z serwera co 8 sekund
-- **Konflikt handling**: Ochrona lokalnych zmian przez 5 sekund
+- **GET requests**: Pobieranie ustawień co 5 sekund (poprzednio 8s)
+- **POST requests**: Wysyłanie telemetrii co 30 sekund
+- **Emergency timeouts**: Zabezpieczenia przed zawieszaniem HTTP
+- **HTTP Mutex**: Ochrona przed nakładającymi się requestami
 - **Offline mode**: Kontynuacja pracy bez połączenia z internetem
 
 ### 📱 Interfejs Użytkownika
 - **Łuk kontrolny**: Intuicyjna zmiana temperatury dotykiem
-- **Status WiFi**: Ikona z sygnalizacją siły sygnału
-- **Powiadomienia**: Informacje o zmianach z aplikacji
-- **Status połączenia**: Komunikaty o stanie komunikacji
+- **Odblokowywanie**: 3 szybkie dotknięcia dla dostępu do ustawień
+- **Status systemu**: "WiFi: Połączony, Cache backendu: Tak"
+- **Komunikaty polskie**: Wszystkie logi i powiadomienia po polsku
+- **Wykrywanie okien**: Alarm przy spadku temperatury ≥2°C w 2 min
 
 ### 🔄 Synchronizacja Inteligentna
-- **Startup sync**: Pobieranie ustawień przy starcie
-- **Source tracking**: Rozróżnianie zmian z aplikacji vs urządzenia
-- **Retry logic**: Automatyczne ponowne próby przy błędach
-- **Cache lokalny**: Zapamiętywanie ostatnich ustawień
+- **Startup sync**: Pobieranie ustawień przy starcie z timeout 30s
+- **Source tracking**: Rozróżnianie źródła zmian ('app' vs 'device')
+- **Local override**: Priorytet lokalnych zmian z ochroną czasową
+- **CYW43 Diagnostyka**: Szczegółowe testy modułu WiFi
+- **Progress monitoring**: Timeout 2s connecting, 4s inne operacje
 
 ## Architektura
 

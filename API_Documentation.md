@@ -5,25 +5,27 @@
 ### 1. Endpointy API Serwera
 
 #### GET /device/{id}/settings
-**Opis:** Pobiera aktualne ustawienia termostatu  
+**Opis:** Pobiera aktualne ustawienia termostatu (wykonywane co 5 sekund)  
 **Autoryzacja:** Brak wymaganej autoryzacji (endpoint publiczny)  
+**Timeout:** 4s progress timeout + 1M iteracji emergency backup  
 **Response:**
 ```json
 {
   "target_temp_c": 22.5,
   "last_source": "app",
-  "updated_at": "2025-10-31T10:30:00Z"
+  "updated_at": "2025-12-22T10:30:00Z"
 }
 ```
 
 **Pola:**
 - `target_temp_c` (float): Zadana temperatura w stopniach Celsjusza
-- `last_source` (string|null): Źródło ostatniej zmiany ("app", "device", null)
+- `last_source` (string): Źródło ostatniej zmiany ("app", "device")
 - `updated_at` (string): Timestamp ostatniej aktualizacji
 
-#### PUT /device/{id}/settings
-**Opis:** Ustawia nową temperaturę zadaną z termostatu  
-**Autoryzacja:** Brak wymaganej autoryzacji (endpoint dedykowany dla urządzeń)  
+#### PUT /device/{id}/settings  
+**Opis:** Ustawia nową temperaturę zadaną z termostatu [OPCJONALNE]  
+**Autoryzacja:** Brak wymaganej autoryzacji  
+**Mutex:** Chronione przez http_in_progress  
 **Request Body:**
 ```json
 {
@@ -35,16 +37,19 @@
 **Response:** `200 OK` lub kod błędu
 
 #### POST /device/{id}/reading
-**Opis:** Wysyła odczyty z sensorów  
-**Autoryzacja:** Brak wymaganej autoryzacji (endpoint dedykowany dla urządzeń)  
+**Opis:** Wysyła odczyty z sensorów i setpoint (co 30 sekund)  
+**Autoryzacja:** Brak wymaganej autoryzacji  
+**Mutex:** Chronione przez http_in_progress  
 **Request Body:**
 ```json
 {
-  "temperature_c": 21.5,
-  "humidity_pct": 45.2,
-  "pressure_hpa": 1013.25,
-  "setpoint_c": 22.0,
-  "timestamp": "2025-10-31T10:30:00Z"
+  "temperature": 21.5,
+  "humidity": 45.2, 
+  "pressure": 1013.25,
+  "target_temp_c": 22.0,
+  "window_open": false,
+  "timestamp": 1703123456,
+  "device_id": 1
 }
 ```
 

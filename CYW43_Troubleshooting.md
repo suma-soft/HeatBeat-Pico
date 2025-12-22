@@ -11,43 +11,57 @@ Błąd "hdr mismatch" w module CYW43 wskazuje na problemy z komunikacją między
 
 ### Zastosowane rozwiązania w kodzie
 
-#### 1. Stabilizacja inicjalizacji
+#### 1. Kompletna diagnostyka przy starcie
 ```c
-// Wielokrotne próby inicjalizacji z resetem
-int init_attempts = 0;
-const int max_init_attempts = 3;
-
-while (init_attempts < max_init_attempts) {
-    int init_result = cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND);
-    if (init_result == 0) break;
-    
-    // Soft reset przed kolejną próbą
-    cyw43_arch_deinit();
-    sleep_ms(1000);
+// Funkcja diagnostyczna wywołana przed główną inicjalizacją
+void test_cyw43_hardware() {
+    printf("[TEST 1] Podstawowa inicjalizacja CYW43...\n");
+    printf("[TEST 2] Inicjalizacja z kodem kraju (Polska)...\n"); 
+    printf("[TEST 3] Włączanie trybu Station (STA)...\n");
+    printf("[TEST 4] Test statusu linku WiFi...\n");
+    printf("[TEST 5] Test skanowania sieci WiFi...\n");
+    printf("[TEST 6] Test komunikacji przez próbę połączenia (5s timeout)...\n");
 }
+
+// Rezultaty testów z polskimi komunikatami
+printf("[TEST 1] SUKCES: Podstawowa inicjalizacja OK\n");
+printf("[TEST 6] SUKCES: Komunikacja z CYW43 działa\n");
 ```
 
-#### 2. Dodatkowe opóźnienia stabilizacyjne
+#### 2. Multi-Auth system z diagnostyką
 ```c
-// Po inicjalizacji
-sleep_ms(500);
+// Tablica różnych metod autoryzacji  
+struct auth_method_t {
+    cyw43_auth_t auth;
+    const char* name;
+};
 
-// Po włączeniu trybu STA
-cyw43_arch_enable_sta_mode();
-sleep_ms(200);
+struct auth_method_t auth_methods[] = {
+    {CYW43_AUTH_WPA2_AES_PSK, "WPA2-AES"},
+    {CYW43_AUTH_WPA2_MIXED_PSK, "WPA2-Mixed"}, 
+    {CYW43_AUTH_WPA2_AES_PSK, "WPA2-Fallback"}
+};
 
-// Między próbami autoryzacji
-sleep_ms(1000);
+// Próba każdej metody z logowaniem
+printf("[WiFi] Próba %d/%d: %s...\n", i+1, num_methods, auth_methods[i].name);
+printf("[WiFi] SUKCES z %s!\n", auth_methods[i].name);
 ```
 
-#### 3. Monitoring zdrowia CYW43
+#### 3. Recovery system z CYW43
 ```c
-static bool check_cyw43_health(void) {
-    int link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+// Funkcja recovery przy błędach komunikacji
+bool recover_cyw43_error() {
+    printf("[CYW43] Wykryto błąd - próba recovery...\n");
     
-    // Sprawdź poprawność statusu
-    if (link_status < 0 || link_status > CYW43_LINK_BADAUTH) {
-        return false;
+    cyw43_arch_deinit();
+    sleep_ms(2000);  // Dłuższe opóźnienie
+    
+    if (cyw43_arch_init_with_country(CYW43_COUNTRY_POLAND) == 0) {
+        printf("[CYW43] Recovery pomyślne - próba ponownego połączenia\n");
+        return true;
+    }
+    return false;
+}
     }
     
     // Test komunikacji przez RSSI
