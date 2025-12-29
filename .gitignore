@@ -1,6 +1,7 @@
 build
 !.vscode/*
 build/
+hardware/
 
 # Visual Studio artifacts (CMake generator)
 *.vcxproj
